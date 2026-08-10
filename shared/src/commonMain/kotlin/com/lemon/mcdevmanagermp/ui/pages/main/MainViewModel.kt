@@ -16,6 +16,7 @@ import com.lemon.mcdevmanagermp.data.vo.netease.user.LevelInfoVO
 import com.lemon.mcdevmanagermp.data.vo.netease.user.OverviewVO
 import com.lemon.mcdevmanagermp.data.vo.netease.user.UserInfoVO
 import com.lemon.mcdevmanagermp.domain.main.MainUseCase
+import com.lemon.mcdevmanagermp.domain.main.ProfitPeriod
 import com.lemon.mcdevmanagermp.domain.rankList.RankListUseCase
 import com.lemon.mcdevmanagermp.domain.resource.GetResourceListUseCase
 import com.lemon.mcdevmanagermp.ui.base.BaseViewModel
@@ -51,9 +52,13 @@ class MainViewModel : BaseViewModel<MainState, MainAction, MainEffect>(MainState
 
         var cachedProfitData: ProfitData? = null
             private set
+        var cachedProfitPeriod: ProfitPeriod? = null
+            private set
         var cachedMonthLabel: String? = null
             private set
         var cachedLastMonthProfitData: ProfitData? = null
+            private set
+        var cachedLastMonthProfitPeriod: ProfitPeriod? = null
             private set
         var cachedLastMonthLabel: String? = null
             private set
@@ -85,7 +90,9 @@ class MainViewModel : BaseViewModel<MainState, MainAction, MainEffect>(MainState
             cachedOverview = null
             cachedLevelInfo = null
             cachedProfitData = null
+            cachedProfitPeriod = null
             cachedLastMonthProfitData = null
+            cachedLastMonthProfitPeriod = null
             cachedRankListData = emptyList()
         }
     }
@@ -131,6 +138,8 @@ class MainViewModel : BaseViewModel<MainState, MainAction, MainEffect>(MainState
                 copy(
                     profitData = cachedProfitData,
                     lastProfitData = cachedLastMonthProfitData,
+                    profitPeriod = cachedProfitPeriod,
+                    lastProfitPeriod = cachedLastMonthProfitPeriod,
                     isProfitLoading = false,
                     showLastMonthProfit = cachedShowLastMonthProfit
                 )
@@ -259,10 +268,12 @@ class MainViewModel : BaseViewModel<MainState, MainAction, MainEffect>(MainState
             try {
                 val timeZone = TimeZone.of("Asia/Shanghai")
                 val now = Clock.System.now().toLocalDateTime(timeZone)
-                val result = mainUseCase.computeProfit(now.year, now.month.number)
+                val result = mainUseCase.computeProfit(now.year, now.month.number, now.date)
                 cachedProfitData = result.thisMonth
+                cachedProfitPeriod = result.thisMonthPeriod
                 cachedMonthLabel = "${now.year}年${now.month.number}月"
                 cachedLastMonthProfitData = result.lastMonth
+                cachedLastMonthProfitPeriod = result.lastMonthPeriod
                 val lastMonthNumber = if (now.month.number == 1) 12 else now.month.number - 1
                 val lastMonthYear = if (now.month.number == 1) now.year - 1 else now.year
                 cachedLastMonthLabel = "${lastMonthYear}年${lastMonthNumber}月"
@@ -272,6 +283,8 @@ class MainViewModel : BaseViewModel<MainState, MainAction, MainEffect>(MainState
                     copy(
                         profitData = result.thisMonth,
                         lastProfitData = result.lastMonth,
+                        profitPeriod = result.thisMonthPeriod,
+                        lastProfitPeriod = result.lastMonthPeriod,
                         isProfitLoading = false,
                         showLastMonthProfit = cachedShowLastMonthProfit
                     )

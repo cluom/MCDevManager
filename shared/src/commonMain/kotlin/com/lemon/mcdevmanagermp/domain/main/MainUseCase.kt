@@ -27,7 +27,36 @@ data class MainDashboardData(
 
 data class ProfitResult(
     val thisMonth: ProfitData,
-    val lastMonth: ProfitData
+    val lastMonth: ProfitData,
+    val thisMonthPeriod: ProfitPeriod,
+    val lastMonthPeriod: ProfitPeriod
+)
+
+data class ProfitPeriod(
+    val startDate: LocalDate,
+    val endDate: LocalDate,
+    val dataThroughDate: LocalDate?
+) {
+    val totalDays: Int
+        get() = (endDate.toEpochDays() - startDate.toEpochDays() + 1).toInt()
+
+    val elapsedDays: Int
+        get() {
+            val latestDate = dataThroughDate ?: return 0
+            if (latestDate < startDate) return 0
+            val effectiveEndDate = minOf(latestDate, endDate)
+            return (effectiveEndDate.toEpochDays() - startDate.toEpochDays() + 1).toInt()
+        }
+
+    fun estimateSettlement(currentProfit: Double): Double? {
+        if (elapsedDays !in 1 until totalDays) return null
+        return currentProfit / elapsedDays * totalDays
+    }
+}
+
+private data class MonthDiamondData(
+    val moduleDiamonds: Map<String, Double>,
+    val dataThroughDate: LocalDate?
 )
 
 class MainUseCase(
@@ -47,21 +76,28 @@ class MainUseCase(
         )
     }
 
-    suspend fun computeProfit(year: Int, month: Int): ProfitResult = coroutineScope {
-        val thisMonthDiamonds = getOneMonthComponentDiamonds(year, month)
+    suspend fun computeProfit(year: Int, month: Int, today: LocalDate): ProfitResult = coroutineScope {
+        val thisMonthData = getOneMonthComponentDiamonds(year, month)
         val lastMonthDate = LocalDate(year, month, 1).minus(1, DateTimeUnit.MONTH)
-        val lastMonthDiamonds = getOneMonthComponentDiamonds(
+        val lastMonthData = getOneMonthComponentDiamonds(
             lastMonthDate.year,
             lastMonthDate.month.number
         )
 
         ProfitResult(
-            thisMonth = calculateProfit(thisMonthDiamonds),
-            lastMonth = calculateProfit(lastMonthDiamonds)
+            thisMonth = calculateProfit(thisMonthData.moduleDiamonds),
+            lastMonth = calculateProfit(lastMonthData.moduleDiamonds),
+            thisMonthPeriod = createProfitPeriod(year, month, thisMonthData.dataThroughDate, today),
+            lastMonthPeriod = createProfitPeriod(
+                lastMonthDate.year,
+                lastMonthDate.month.number,
+                lastMonthData.dataThroughDate,
+                today
+            )
         )
     }
 
-    private suspend fun getOneMonthComponentDiamonds(year: Int, month: Int): Map<String, Double> =
+    private suspend fun getOneMonthComponentDiamonds(year: Int, month: Int): MonthDiamondData =
         coroutineScope {
             val resList = when (val resources = getResourceListUseCase("pe")) {
                 is NetworkState.Success -> resources.data ?: emptyList()
@@ -70,31 +106,33 @@ class MainUseCase(
 
             val dateRange = monthDateRange(year, month)
 
-            resList.map { res ->
+            val componentData = resList.map { res ->
                 async {
                     val result = analyzeRepository.getDayDetail(
                         platform = "pe",
                         category = "pe",
-                        startDate = dateRange.first,
-                        endDate = dateRange.second,
+                        startDate = formatDateParam(dateRange.first),
+                        endDate = formatDateParam(dateRange.second),
                         itemListStr = res.itemId
                     )
                     if (result is NetworkState.Success) {
-                        res.itemName to (result.data?.data?.sumOf { it.diamond * (1 - it.refundRate) }
-                            ?: 0.0)
+                        val dayData = result.data?.data.orEmpty()
+                        ComponentDiamondData(
+                            moduleName = res.itemName,
+                            diamonds = dayData.sumOf { it.diamond * (1 - it.refundRate) },
+                            dataThroughDate = dayData.mapNotNull { parseDateParamOrNull(it.dateId) }.maxOrNull()
+                        )
                     } else {
-                        res.itemName to 0.0
+                        ComponentDiamondData(res.itemName, 0.0, null)
                     }
                 }
-            }.associate { it.await() }
-        }
+            }.map { it.await() }
 
-    private fun monthDateRange(year: Int, month: Int): Pair<String, String> {
-        val firstDay = LocalDate(year, month, 1)
-        val endDate = firstDay.plus(1, DateTimeUnit.MONTH).minus(10, DateTimeUnit.DAY)
-        val startDate = firstDay.minus(9, DateTimeUnit.DAY)
-        return startDate.toString().replace("-", "") to endDate.toString().replace("-", "")
-    }
+            MonthDiamondData(
+                moduleDiamonds = componentData.associate { it.moduleName to it.diamonds },
+                dataThroughDate = componentData.mapNotNull { it.dataThroughDate }.maxOrNull()
+            )
+        }
 
     fun isSessionExpired(vararg states: NetworkState<*>): Boolean {
         return states.any { state ->
@@ -102,4 +140,38 @@ class MainUseCase(
                     (state.e is CookiesExpiredException || state.e is LoginException)
         }
     }
+}
+
+private data class ComponentDiamondData(
+    val moduleName: String,
+    val diamonds: Double,
+    val dataThroughDate: LocalDate?
+)
+
+internal fun monthDateRange(year: Int, month: Int): Pair<LocalDate, LocalDate> {
+    val firstDay = LocalDate(year, month, 1)
+    val endDate = firstDay.plus(1, DateTimeUnit.MONTH).minus(10, DateTimeUnit.DAY)
+    val startDate = firstDay.minus(9, DateTimeUnit.DAY)
+    return startDate to endDate
+}
+
+internal fun createProfitPeriod(
+    year: Int,
+    month: Int,
+    dataThroughDate: LocalDate?,
+    today: LocalDate
+): ProfitPeriod {
+    val (startDate, endDate) = monthDateRange(year, month)
+    // 接口会返回查询区间内的未来占位行，统计进度最多只能到昨天。
+    val latestCompletedDate = today.minus(1, DateTimeUnit.DAY)
+    val effectiveDataThroughDate = dataThroughDate?.let { minOf(it, latestCompletedDate) }
+    return ProfitPeriod(startDate, endDate, effectiveDataThroughDate)
+}
+
+private fun formatDateParam(date: LocalDate): String = date.toString().replace("-", "")
+
+private fun parseDateParamOrNull(value: String): LocalDate? {
+    if (value.length != 8) return null
+    val isoDate = "${value.substring(0, 4)}-${value.substring(4, 6)}-${value.substring(6, 8)}"
+    return runCatching { LocalDate.parse(isoDate) }.getOrNull()
 }

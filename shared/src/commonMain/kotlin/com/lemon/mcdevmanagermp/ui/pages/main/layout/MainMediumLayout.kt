@@ -229,6 +229,7 @@ internal fun MediumHomeTabContent(
                 ProfitCard(
                     title = "本月收益速算",
                     profitData = state.profitData ?: ProfitData(),
+                    profitPeriod = state.profitPeriod,
                     isLoading = state.isProfitLoading,
                     expanded = state.profitExpanded,
                     onToggleExpand = { onAction(MainAction.ToggleProfitExpand) },
@@ -241,6 +242,7 @@ internal fun MediumHomeTabContent(
                     ProfitCard(
                         title = "上月收益速算",
                         profitData = state.lastProfitData ?: ProfitData(),
+                        profitPeriod = state.lastProfitPeriod,
                         isLoading = state.isProfitLoading,
                         expanded = state.lastProfitExpanded,
                         onToggleExpand = { onAction(MainAction.ToggleLastProfitExpand) },

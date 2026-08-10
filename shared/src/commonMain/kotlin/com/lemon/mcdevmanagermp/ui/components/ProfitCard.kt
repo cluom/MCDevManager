@@ -47,10 +47,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.lemon.mcdevmanagermp.domain.main.ProfitPeriod
 import com.lemon.mcdevmanagermp.ui.theme.LocalAppColors
 import com.lemon.mcdevmanagermp.utils.ProfitData
 import com.lemon.mcdevmanagermp.utils.extension.formatDecimal
 import com.lemon.mcdevmanagermp.utils.getTaxMoney
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.number
 import mcdevmanagermpr.shared.generated.resources.Res
 import mcdevmanagermpr.shared.generated.resources.ic_money
 import org.jetbrains.compose.resources.painterResource
@@ -59,12 +62,14 @@ import org.jetbrains.compose.resources.painterResource
 fun ProfitCard(
     title: String,
     profitData: ProfitData,
+    profitPeriod: ProfitPeriod? = null,
     isLoading: Boolean = true,
     expanded: Boolean = false,
     onToggleExpand: () -> Unit = {},
     onNavigateToDetail: (() -> Unit)? = null
 ) {
     val colors = LocalAppColors.current
+    val estimatedSettlement = profitPeriod?.estimateSettlement(profitData.totalProfit)
 
     if (!isLoading) {
         Card(
@@ -93,12 +98,21 @@ fun ProfitCard(
                         modifier = Modifier.size(24.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = colors.textColor
-                    )
-                    Spacer(modifier = Modifier.weight(1f))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = colors.textColor
+                        )
+                        profitPeriod?.let { period ->
+                            Text(
+                                text = period.toDisplayText(),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = colors.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
                     if (onNavigateToDetail != null) {
                         IconButton(
                             onClick = onNavigateToDetail,
@@ -125,6 +139,14 @@ fun ProfitCard(
                             style = MaterialTheme.typography.bodySmall,
                             color = colors.onSurfaceVariant
                         )
+                        estimatedSettlement?.let { estimate ->
+                            Text(
+                                text = "预计结算 ${estimate.formatDecimal(2)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Medium,
+                                color = colors.primary
+                            )
+                        }
                     }
                 }
 
@@ -202,6 +224,14 @@ fun ProfitCard(
         ShimmerProfitCard()
     }
 }
+
+private fun ProfitPeriod.toDisplayText(): String {
+    val progress = if (elapsedDays > 0) "已统计 $elapsedDays/$totalDays 天" else "等待日数据"
+    return "统计 ${startDate.toShortDate()}–${endDate.toShortDate()} · $progress"
+}
+
+private fun LocalDate.toShortDate(): String =
+    "${month.number.toString().padStart(2, '0')}/${day.toString().padStart(2, '0')}"
 
 @Composable
 private fun ShimmerProfitCard() {
