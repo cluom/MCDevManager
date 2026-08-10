@@ -38,6 +38,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -48,6 +49,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.lemon.mcdevmanagermp.domain.main.ProfitPeriod
+import com.lemon.mcdevmanagermp.domain.profitsharing.ProfitAllocationSummary
 import com.lemon.mcdevmanagermp.ui.theme.LocalAppColors
 import com.lemon.mcdevmanagermp.utils.ProfitData
 import com.lemon.mcdevmanagermp.utils.extension.formatDecimal
@@ -63,10 +65,12 @@ fun ProfitCard(
     title: String,
     profitData: ProfitData,
     profitPeriod: ProfitPeriod? = null,
+    allocationSummary: ProfitAllocationSummary? = null,
     isLoading: Boolean = true,
     expanded: Boolean = false,
     onToggleExpand: () -> Unit = {},
-    onNavigateToDetail: (() -> Unit)? = null
+    onNavigateToDetail: (() -> Unit)? = null,
+    onManageSharing: (() -> Unit)? = null
 ) {
     val colors = LocalAppColors.current
     val estimatedSettlement = profitPeriod?.estimateSettlement(profitData.totalProfit)
@@ -109,6 +113,17 @@ fun ProfitCard(
                                 text = period.toDisplayText(),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = colors.onSurfaceVariant
+                            )
+                        }
+                        allocationSummary?.let { summary ->
+                            Text(
+                                text = if (summary.payouts.isEmpty()) {
+                                    "尚未配置人员分账 · 点击展开管理"
+                                } else {
+                                    "已配置 ${summary.payouts.size} 人 · 点击展开查看分账"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = colors.primary
                             )
                         }
                     }
@@ -186,9 +201,9 @@ fun ProfitCard(
                                     color = colors.primary,
                                     fontWeight = FontWeight.SemiBold
                                 )
-                                profitData.subsidyProfit.entries.forEach { (name, value) ->
+                                profitData.subsidyProfit.entries.forEach { (itemId, value) ->
                                     DetailRow(
-                                        label = name,
+                                        label = profitData.moduleNames[itemId] ?: itemId,
                                         value = "${value.toInt()}",
                                         labelColor = colors.onSurfaceVariant,
                                         valueColor = colors.textColor
@@ -216,12 +231,79 @@ fun ProfitCard(
                                 )
                             )
                         }
+
+                        allocationSummary?.let { summary ->
+                            AllocationSummarySection(
+                                summary = summary,
+                                onManageSharing = onManageSharing
+                            )
+                        }
                     }
                 }
             }
         }
     } else {
         ShimmerProfitCard()
+    }
+}
+
+@Composable
+private fun AllocationSummarySection(
+    summary: ProfitAllocationSummary,
+    onManageSharing: (() -> Unit)?
+) {
+    val colors = LocalAppColors.current
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.surfaceContainerHighest, RoundedCornerShape(8.dp))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            text = "人员分账（税后）",
+            style = MaterialTheme.typography.labelMedium,
+            color = colors.primary,
+            fontWeight = FontWeight.SemiBold
+        )
+        if (summary.payouts.isEmpty()) {
+            Text(
+                text = "尚未添加分账人员",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.onSurfaceVariant
+            )
+        } else {
+            summary.payouts.forEach { payout ->
+                DetailRow(
+                    label = payout.personName,
+                    value = payout.amount.formatDecimal(2),
+                    labelColor = colors.onSurfaceVariant,
+                    valueColor = colors.textColor
+                )
+            }
+        }
+        if (summary.unassignedAmount > 0.005) {
+            DetailRow(
+                label = "未分配",
+                value = summary.unassignedAmount.formatDecimal(2),
+                labelColor = colors.error,
+                valueColor = colors.error
+            )
+        }
+        DetailRow(
+            label = "税后合计",
+            value = summary.netTotal.formatDecimal(2),
+            labelColor = colors.onSurfaceVariant,
+            valueColor = colors.primary
+        )
+        onManageSharing?.let { onClick ->
+            TextButton(
+                onClick = onClick,
+                modifier = Modifier.align(Alignment.End)
+            ) {
+                Text("管理人员与模组")
+            }
+        }
     }
 }
 

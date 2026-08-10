@@ -187,6 +187,9 @@ internal fun ExpandedLayout(
                         },
                         onNavigateToMailbox = {
                             onNavigateToSubPage(Route.Mailbox)
+                        },
+                        onNavigateToProfitSharing = {
+                            onNavigateToSubPage(Route.ProfitSharing)
                         }
                     )
 
@@ -199,7 +202,10 @@ internal fun ExpandedLayout(
                             onNavigateToLogin = onNavigateToLogin,
                             onNavigateToAddAccount = onNavigateToAddAccount,
                             onAccountSwitched = onAccountSwitched,
-                            onCheckUpdate = onCheckUpdate
+                            onCheckUpdate = onCheckUpdate,
+                            onNavigateToProfitSharing = {
+                                onNavigateToSubPage(Route.ProfitSharing)
+                            }
                         )
                     }
                 }
@@ -215,7 +221,8 @@ internal fun ExpandedHomeTabContent(
     onNavigateToIncomeDetail: () -> Unit = {},
     onNavigateToLastMonthDetail: () -> Unit = {},
     onNavigateToIncome: () -> Unit = {},
-    onNavigateToMailbox: () -> Unit = {}
+    onNavigateToMailbox: () -> Unit = {},
+    onNavigateToProfitSharing: () -> Unit = {}
 ) {
     val colors = LocalAppColors.current
     val userNickname = state.userInfo?.nickname
@@ -284,10 +291,12 @@ internal fun ExpandedHomeTabContent(
                             title = "上月收益速算",
                             profitData = state.lastProfitData ?: ProfitData(),
                             profitPeriod = state.lastProfitPeriod,
+                            allocationSummary = state.lastMonthAllocation,
                             isLoading = state.isProfitLoading,
                             expanded = state.lastProfitExpanded,
                             onToggleExpand = { onAction(MainAction.ToggleLastProfitExpand) },
-                            onNavigateToDetail = onNavigateToLastMonthDetail
+                            onNavigateToDetail = onNavigateToLastMonthDetail,
+                            onManageSharing = onNavigateToProfitSharing
                         )
                     }
                     IncomeManagementCard(onClick = onNavigateToIncome)

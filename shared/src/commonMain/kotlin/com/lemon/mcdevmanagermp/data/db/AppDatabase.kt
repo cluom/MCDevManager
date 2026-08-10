@@ -9,14 +9,23 @@ import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.execSQL
 import com.lemon.mcdevmanagermp.data.db.dao.AccountDao
 import com.lemon.mcdevmanagermp.data.db.dao.DayDetailConfigDao
+import com.lemon.mcdevmanagermp.data.db.dao.ProfitSharingDao
 import com.lemon.mcdevmanagermp.data.db.dao.PromotionTemplateDao
 import com.lemon.mcdevmanagermp.data.db.entity.AccountEntity
 import com.lemon.mcdevmanagermp.data.db.entity.DayDetailConfigEntity
+import com.lemon.mcdevmanagermp.data.db.entity.ModuleOwnerEntity
+import com.lemon.mcdevmanagermp.data.db.entity.ProfitPersonEntity
 import com.lemon.mcdevmanagermp.data.db.entity.PromotionTemplateEntity
 
 @Database(
-    entities = [AccountEntity::class, PromotionTemplateEntity::class, DayDetailConfigEntity::class],
-    version = 6,
+    entities = [
+        AccountEntity::class,
+        PromotionTemplateEntity::class,
+        DayDetailConfigEntity::class,
+        ProfitPersonEntity::class,
+        ModuleOwnerEntity::class
+    ],
+    version = 7,
     exportSchema = false
 )
 @ConstructedBy(AppDatabaseConstructor::class)
@@ -24,6 +33,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun accountDao(): AccountDao
     abstract fun promotionTemplateDao(): PromotionTemplateDao
     abstract fun dayDetailConfigDao(): DayDetailConfigDao
+    abstract fun profitSharingDao(): ProfitSharingDao
 }
 
 expect object AppDatabaseConstructor : RoomDatabaseConstructor<AppDatabase> {
@@ -96,6 +106,40 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
     override fun migrate(connection: SQLiteConnection) {
         connection.execSQL(
             "ALTER TABLE promotion_template ADD COLUMN promoImageUrl TEXT NOT NULL DEFAULT ''"
+        )
+    }
+}
+
+/** 数据库迁移 6→7：新增分账人员与模组归属权重表。 */
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(connection: SQLiteConnection) {
+        connection.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS profit_person (
+              id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+              accountKey TEXT NOT NULL,
+              name TEXT NOT NULL,
+              createdAt INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+        connection.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS index_profit_person_accountKey_name " +
+                    "ON profit_person (accountKey, name)"
+        )
+        connection.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS module_owner (
+              itemId TEXT NOT NULL,
+              personId INTEGER NOT NULL,
+              weight REAL NOT NULL,
+              PRIMARY KEY (itemId, personId),
+              FOREIGN KEY (personId) REFERENCES profit_person(id) ON UPDATE NO ACTION ON DELETE CASCADE
+            )
+            """.trimIndent()
+        )
+        connection.execSQL(
+            "CREATE INDEX IF NOT EXISTS index_module_owner_personId ON module_owner (personId)"
         )
     }
 }

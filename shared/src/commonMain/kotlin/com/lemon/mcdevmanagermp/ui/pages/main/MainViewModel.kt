@@ -9,6 +9,7 @@ import com.lemon.mcdevmanagermp.data.page.RankCategoryData
 import com.lemon.mcdevmanagermp.data.repository.AccountRepositoryImpl
 import com.lemon.mcdevmanagermp.data.repository.AnalyzeRepositoryImpl
 import com.lemon.mcdevmanagermp.data.repository.MailboxRepositoryImpl
+import com.lemon.mcdevmanagermp.data.repository.ProfitSharingRepositoryImpl
 import com.lemon.mcdevmanagermp.data.repository.RankListRepositoryImpl
 import com.lemon.mcdevmanagermp.data.repository.ResourceRepositoryImpl
 import com.lemon.mcdevmanagermp.data.repository.UserRepositoryImpl
@@ -17,6 +18,7 @@ import com.lemon.mcdevmanagermp.data.vo.netease.user.OverviewVO
 import com.lemon.mcdevmanagermp.data.vo.netease.user.UserInfoVO
 import com.lemon.mcdevmanagermp.domain.main.MainUseCase
 import com.lemon.mcdevmanagermp.domain.main.ProfitPeriod
+import com.lemon.mcdevmanagermp.domain.profitsharing.ProfitAllocationSummary
 import com.lemon.mcdevmanagermp.domain.rankList.RankListUseCase
 import com.lemon.mcdevmanagermp.domain.resource.GetResourceListUseCase
 import com.lemon.mcdevmanagermp.ui.base.BaseViewModel
@@ -25,6 +27,7 @@ import com.lemon.mcdevmanagermp.utils.ProfitData
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.number
@@ -60,6 +63,8 @@ class MainViewModel : BaseViewModel<MainState, MainAction, MainEffect>(MainState
             private set
         var cachedLastMonthProfitPeriod: ProfitPeriod? = null
             private set
+        var cachedLastMonthAllocation: ProfitAllocationSummary? = null
+            private set
         var cachedLastMonthLabel: String? = null
             private set
 
@@ -93,14 +98,17 @@ class MainViewModel : BaseViewModel<MainState, MainAction, MainEffect>(MainState
             cachedProfitPeriod = null
             cachedLastMonthProfitData = null
             cachedLastMonthProfitPeriod = null
+            cachedLastMonthAllocation = null
             cachedRankListData = emptyList()
         }
     }
 
+    private val profitSharingRepository = ProfitSharingRepositoryImpl.INSTANCE
     private val mainUseCase = MainUseCase(
         userRepository = UserRepositoryImpl.INSTANCE,
         analyzeRepository = AnalyzeRepositoryImpl.INSTANCE,
-        getResourceListUseCase = GetResourceListUseCase(ResourceRepositoryImpl.INSTANCE)
+        getResourceListUseCase = GetResourceListUseCase(ResourceRepositoryImpl.INSTANCE),
+        profitSharingRepository = profitSharingRepository
     )
     private val rankListUseCase = RankListUseCase(
         rankListRepository = RankListRepositoryImpl.INSTANCE
@@ -140,12 +148,20 @@ class MainViewModel : BaseViewModel<MainState, MainAction, MainEffect>(MainState
                     lastProfitData = cachedLastMonthProfitData,
                     profitPeriod = cachedProfitPeriod,
                     lastProfitPeriod = cachedLastMonthProfitPeriod,
+                    lastMonthAllocation = cachedLastMonthAllocation,
                     isProfitLoading = false,
                     showLastMonthProfit = cachedShowLastMonthProfit
                 )
             }
+            refreshLastMonthAllocation()
         } else {
             loadProfit()
+        }
+
+        viewModelScope.launch {
+            profitSharingRepository.changes.collect {
+                refreshLastMonthAllocation()
+            }
         }
 
         // 消息未读数：先从静态缓存恢复（避免角标闪烁），随后无条件刷新以同步已读状态。
@@ -268,12 +284,19 @@ class MainViewModel : BaseViewModel<MainState, MainAction, MainEffect>(MainState
             try {
                 val timeZone = TimeZone.of("Asia/Shanghai")
                 val now = Clock.System.now().toLocalDateTime(timeZone)
-                val result = mainUseCase.computeProfit(now.year, now.month.number, now.date)
+                val accountKey = currentAccountKey()
+                val result = mainUseCase.computeProfit(
+                    now.year,
+                    now.month.number,
+                    now.date,
+                    accountKey
+                )
                 cachedProfitData = result.thisMonth
                 cachedProfitPeriod = result.thisMonthPeriod
                 cachedMonthLabel = "${now.year}年${now.month.number}月"
                 cachedLastMonthProfitData = result.lastMonth
                 cachedLastMonthProfitPeriod = result.lastMonthPeriod
+                cachedLastMonthAllocation = result.lastMonthAllocation
                 val lastMonthNumber = if (now.month.number == 1) 12 else now.month.number - 1
                 val lastMonthYear = if (now.month.number == 1) now.year - 1 else now.year
                 cachedLastMonthLabel = "${lastMonthYear}年${lastMonthNumber}月"
@@ -285,6 +308,7 @@ class MainViewModel : BaseViewModel<MainState, MainAction, MainEffect>(MainState
                         lastProfitData = result.lastMonth,
                         profitPeriod = result.thisMonthPeriod,
                         lastProfitPeriod = result.lastMonthPeriod,
+                        lastMonthAllocation = result.lastMonthAllocation,
                         isProfitLoading = false,
                         showLastMonthProfit = cachedShowLastMonthProfit
                     )
@@ -294,6 +318,22 @@ class MainViewModel : BaseViewModel<MainState, MainAction, MainEffect>(MainState
             }
         }
     }
+
+    private fun refreshLastMonthAllocation() {
+        val profitData = cachedLastMonthProfitData ?: state.value.lastProfitData ?: return
+        viewModelScope.launch {
+            val allocation = mainUseCase.calculateAllocation(currentAccountKey(), profitData)
+            cachedLastMonthAllocation = allocation
+            setState { copy(lastMonthAllocation = allocation) }
+        }
+    }
+
+    private suspend fun currentAccountKey(): String =
+        accountRepository.getLastUsedAccount()?.nickname
+            ?: state.value.userInfo?.nickname
+            ?: cachedUserInfo?.nickname
+            ?: AppContext.userInfo?.nickname
+            ?: ""
 
     private fun loadMailboxUnread() {
         viewModelScope.launch {

@@ -34,6 +34,7 @@ import com.lemon.mcdevmanagermp.ui.pages.incomeDetail.IncomeDetailPage
 import com.lemon.mcdevmanagermp.ui.pages.login.LoginPage
 import com.lemon.mcdevmanagermp.ui.pages.mailbox.MailboxPage
 import com.lemon.mcdevmanagermp.ui.pages.main.MainPage
+import com.lemon.mcdevmanagermp.ui.pages.profitsharing.ProfitSharingPage
 import com.lemon.mcdevmanagermp.ui.pages.settings.SettingsContent
 import com.lemon.mcdevmanagermp.ui.pages.splash.SplashPage
 import com.lemon.mcdevmanagermp.ui.theme.LocalAppColors
@@ -158,10 +159,17 @@ fun AppNavigation(modifier: Modifier = Modifier) {
                             )
                         }
 
+                        composable<Route.ProfitSharing> {
+                            ProfitSharingPage(onBack = { navController.popBackStack() })
+                        }
+
                         composable<Route.Settings> {
                             SettingsContent(
                                 showAccountManagement = false,
-                                onBack = { navController.popBackStack() }
+                                onBack = { navController.popBackStack() },
+                                onNavigateToProfitSharing = {
+                                    navController.navigate(Route.ProfitSharing)
+                                }
                             )
                         }
                     }

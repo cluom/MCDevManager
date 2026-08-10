@@ -7,6 +7,7 @@ import com.lemon.mcdevmanagermp.data.vo.netease.user.LevelInfoVO
 import com.lemon.mcdevmanagermp.data.vo.netease.user.OverviewVO
 import com.lemon.mcdevmanagermp.data.vo.netease.user.UserInfoVO
 import com.lemon.mcdevmanagermp.domain.main.ProfitPeriod
+import com.lemon.mcdevmanagermp.domain.profitsharing.ProfitAllocationSummary
 import com.lemon.mcdevmanagermp.ui.navigation.Route
 import com.lemon.mcdevmanagermp.utils.ProfitData
 import com.lemon.mcdevmanagermp.utils.extension.IUiAction
@@ -25,6 +26,7 @@ data class MainState(
     val lastProfitData: ProfitData? = null,
     val profitPeriod: ProfitPeriod? = null,
     val lastProfitPeriod: ProfitPeriod? = null,
+    val lastMonthAllocation: ProfitAllocationSummary? = null,
     val isProfitLoading: Boolean = true,
     val profitExpanded: Boolean = false,
     val lastProfitExpanded: Boolean = false,

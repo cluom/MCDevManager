@@ -140,6 +140,9 @@ internal fun CompactLayout(
                             },
                             onNavigateToMailbox = {
                                 onNavigateToSubPage(Route.Mailbox)
+                            },
+                            onNavigateToProfitSharing = {
+                                onNavigateToSubPage(Route.ProfitSharing)
                             }
                         )
 
@@ -150,7 +153,10 @@ internal fun CompactLayout(
                             onNavigateToLogin = onNavigateToLogin,
                             onNavigateToAddAccount = onNavigateToAddAccount,
                             onAccountSwitched = onAccountSwitched,
-                            onCheckUpdate = onCheckUpdate
+                            onCheckUpdate = onCheckUpdate,
+                            onNavigateToProfitSharing = {
+                                onNavigateToSubPage(Route.ProfitSharing)
+                            }
                         )
                     }
                 }
@@ -194,7 +200,8 @@ internal fun CompactHomeTabContent(
     onNavigateToIncomeDetail: () -> Unit = {},
     onNavigateToLastMonthDetail: () -> Unit = {},
     onNavigateToIncome: () -> Unit = {},
-    onNavigateToMailbox: () -> Unit = {}
+    onNavigateToMailbox: () -> Unit = {},
+    onNavigateToProfitSharing: () -> Unit = {}
 ) {
     val colors = LocalAppColors.current
     val user = state.userInfo
@@ -313,10 +320,12 @@ internal fun CompactHomeTabContent(
                         title = "上月收益速算",
                         profitData = state.lastProfitData ?: ProfitData(),
                         profitPeriod = state.lastProfitPeriod,
+                        allocationSummary = state.lastMonthAllocation,
                         isLoading = state.isProfitLoading,
                         expanded = state.lastProfitExpanded,
                         onToggleExpand = { onAction(MainAction.ToggleLastProfitExpand) },
-                        onNavigateToDetail = onNavigateToLastMonthDetail
+                        onNavigateToDetail = onNavigateToLastMonthDetail,
+                        onManageSharing = onNavigateToProfitSharing
                     )
                 }
 

@@ -139,7 +139,8 @@ fun SettingsContent(
     showAccountManagement: Boolean = true,
     startAtAccount: Boolean = false,
     onBack: (() -> Unit)? = null,
-    onCheckUpdate: (() -> Unit)? = null
+    onCheckUpdate: (() -> Unit)? = null,
+    onNavigateToProfitSharing: () -> Unit = {}
 ) {
     var currentSubPage by remember {
         mutableStateOf(if (startAtAccount) SettingsSubPage.Account else SettingsSubPage.List)
@@ -192,6 +193,7 @@ fun SettingsContent(
                 onNavigateToAccount = { currentSubPage = SettingsSubPage.Account },
                 onNavigateToAbout = { currentSubPage = SettingsSubPage.About },
                 onNavigateToLog = { currentSubPage = SettingsSubPage.Log },
+                onNavigateToProfitSharing = onNavigateToProfitSharing,
                 showAccountManagement = showAccountManagement,
                 onBack = onBack
             )
@@ -239,6 +241,7 @@ private fun SettingsListPage(
     onNavigateToAccount: () -> Unit = {},
     onNavigateToAbout: () -> Unit = {},
     onNavigateToLog: () -> Unit = {},
+    onNavigateToProfitSharing: () -> Unit = {},
     showAccountManagement: Boolean = true,
     onBack: (() -> Unit)? = null
 ) {
@@ -299,6 +302,19 @@ private fun SettingsListPage(
                     ThemeMode.SYSTEM -> "跟随系统"
                 },
                 onClick = onNavigateToTheme
+            )
+
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                color = colors.outlineVariant,
+                thickness = 0.5.dp
+            )
+
+            SettingsItem(
+                iconVector = Icons.Default.Share,
+                title = "人员与模组分账",
+                subtitle = "配置模组归属、多人权重与收益分配",
+                onClick = onNavigateToProfitSharing
             )
 
             HorizontalDivider(

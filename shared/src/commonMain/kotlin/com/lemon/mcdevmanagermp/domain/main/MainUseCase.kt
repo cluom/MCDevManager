@@ -7,6 +7,9 @@ import com.lemon.mcdevmanagermp.data.vo.netease.user.LevelInfoVO
 import com.lemon.mcdevmanagermp.data.vo.netease.user.OverviewVO
 import com.lemon.mcdevmanagermp.data.vo.netease.user.UserInfoVO
 import com.lemon.mcdevmanagermp.domain.analyze.AnalyzeRepository
+import com.lemon.mcdevmanagermp.domain.profitsharing.ProfitAllocationSummary
+import com.lemon.mcdevmanagermp.domain.profitsharing.ProfitSharingRepository
+import com.lemon.mcdevmanagermp.domain.profitsharing.calculateProfitAllocation
 import com.lemon.mcdevmanagermp.domain.resource.GetResourceListUseCase
 import com.lemon.mcdevmanagermp.domain.user.UserRepository
 import com.lemon.mcdevmanagermp.utils.ProfitData
@@ -29,7 +32,8 @@ data class ProfitResult(
     val thisMonth: ProfitData,
     val lastMonth: ProfitData,
     val thisMonthPeriod: ProfitPeriod,
-    val lastMonthPeriod: ProfitPeriod
+    val lastMonthPeriod: ProfitPeriod,
+    val lastMonthAllocation: ProfitAllocationSummary
 )
 
 data class ProfitPeriod(
@@ -56,13 +60,15 @@ data class ProfitPeriod(
 
 private data class MonthDiamondData(
     val moduleDiamonds: Map<String, Double>,
+    val moduleNames: Map<String, String>,
     val dataThroughDate: LocalDate?
 )
 
 class MainUseCase(
     private val userRepository: UserRepository,
     private val analyzeRepository: AnalyzeRepository,
-    private val getResourceListUseCase: GetResourceListUseCase
+    private val getResourceListUseCase: GetResourceListUseCase,
+    private val profitSharingRepository: ProfitSharingRepository
 ) {
     suspend fun loadDashboard(): MainDashboardData = coroutineScope {
         val userInfoDeferred = async { userRepository.getUserInfo() }
@@ -76,7 +82,12 @@ class MainUseCase(
         )
     }
 
-    suspend fun computeProfit(year: Int, month: Int, today: LocalDate): ProfitResult = coroutineScope {
+    suspend fun computeProfit(
+        year: Int,
+        month: Int,
+        today: LocalDate,
+        accountKey: String
+    ): ProfitResult = coroutineScope {
         val thisMonthData = getOneMonthComponentDiamonds(year, month)
         val lastMonthDate = LocalDate(year, month, 1).minus(1, DateTimeUnit.MONTH)
         val lastMonthData = getOneMonthComponentDiamonds(
@@ -84,16 +95,38 @@ class MainUseCase(
             lastMonthDate.month.number
         )
 
+        val thisMonthProfit = calculateProfit(
+            thisMonthData.moduleDiamonds,
+            thisMonthData.moduleNames
+        )
+        val lastMonthProfit = calculateProfit(
+            lastMonthData.moduleDiamonds,
+            lastMonthData.moduleNames
+        )
+
         ProfitResult(
-            thisMonth = calculateProfit(thisMonthData.moduleDiamonds),
-            lastMonth = calculateProfit(lastMonthData.moduleDiamonds),
+            thisMonth = thisMonthProfit,
+            lastMonth = lastMonthProfit,
             thisMonthPeriod = createProfitPeriod(year, month, thisMonthData.dataThroughDate, today),
             lastMonthPeriod = createProfitPeriod(
                 lastMonthDate.year,
                 lastMonthDate.month.number,
                 lastMonthData.dataThroughDate,
                 today
-            )
+            ),
+            lastMonthAllocation = calculateAllocation(accountKey, lastMonthProfit)
+        )
+    }
+
+    suspend fun calculateAllocation(
+        accountKey: String,
+        profitData: ProfitData
+    ): ProfitAllocationSummary {
+        if (accountKey.isBlank()) return ProfitAllocationSummary()
+        return calculateProfitAllocation(
+            profitData = profitData,
+            people = profitSharingRepository.getPeople(accountKey),
+            ownerships = profitSharingRepository.getOwnerships(accountKey)
         )
     }
 
@@ -118,18 +151,20 @@ class MainUseCase(
                     if (result is NetworkState.Success) {
                         val dayData = result.data?.data.orEmpty()
                         ComponentDiamondData(
+                            itemId = res.itemId,
                             moduleName = res.itemName,
                             diamonds = dayData.sumOf { it.diamond * (1 - it.refundRate) },
                             dataThroughDate = dayData.mapNotNull { parseDateParamOrNull(it.dateId) }.maxOrNull()
                         )
                     } else {
-                        ComponentDiamondData(res.itemName, 0.0, null)
+                        ComponentDiamondData(res.itemId, res.itemName, 0.0, null)
                     }
                 }
             }.map { it.await() }
 
             MonthDiamondData(
-                moduleDiamonds = componentData.associate { it.moduleName to it.diamonds },
+                moduleDiamonds = componentData.associate { it.itemId to it.diamonds },
+                moduleNames = componentData.associate { it.itemId to it.moduleName },
                 dataThroughDate = componentData.mapNotNull { it.dataThroughDate }.maxOrNull()
             )
         }
@@ -143,6 +178,7 @@ class MainUseCase(
 }
 
 private data class ComponentDiamondData(
+    val itemId: String,
     val moduleName: String,
     val diamonds: Double,
     val dataThroughDate: LocalDate?

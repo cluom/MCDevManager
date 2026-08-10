@@ -24,4 +24,7 @@ sealed interface Route {
 
     @Serializable
     data object Mailbox : Route
+
+    @Serializable
+    data object ProfitSharing : Route
 }
