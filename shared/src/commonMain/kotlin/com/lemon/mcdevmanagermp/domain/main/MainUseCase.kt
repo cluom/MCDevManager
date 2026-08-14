@@ -33,6 +33,7 @@ data class ProfitResult(
     val lastMonth: ProfitData,
     val thisMonthPeriod: ProfitPeriod,
     val lastMonthPeriod: ProfitPeriod,
+    val thisMonthAllocation: ProfitAllocationSummary,
     val lastMonthAllocation: ProfitAllocationSummary
 )
 
@@ -114,6 +115,7 @@ class MainUseCase(
                 lastMonthData.dataThroughDate,
                 today
             ),
+            thisMonthAllocation = calculateAllocation(accountKey, thisMonthProfit),
             lastMonthAllocation = calculateAllocation(accountKey, lastMonthProfit)
         )
     }

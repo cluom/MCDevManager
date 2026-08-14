@@ -237,10 +237,12 @@ internal fun MediumHomeTabContent(
                     title = "本月收益速算",
                     profitData = state.profitData ?: ProfitData(),
                     profitPeriod = state.profitPeriod,
+                    allocationSummary = state.thisMonthAllocation,
                     isLoading = state.isProfitLoading,
                     expanded = state.profitExpanded,
                     onToggleExpand = { onAction(MainAction.ToggleProfitExpand) },
-                    onNavigateToDetail = onNavigateToIncomeDetail
+                    onNavigateToDetail = onNavigateToIncomeDetail,
+                    onManageSharing = onNavigateToProfitSharing
                 )
 
                 Spacer(Modifier.height(12.dp))

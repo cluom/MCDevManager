@@ -50,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.lemon.mcdevmanagermp.domain.main.ProfitPeriod
 import com.lemon.mcdevmanagermp.domain.profitsharing.ProfitAllocationSummary
+import com.lemon.mcdevmanagermp.domain.profitsharing.scaleToNetTotal
 import com.lemon.mcdevmanagermp.ui.theme.LocalAppColors
 import com.lemon.mcdevmanagermp.utils.ProfitData
 import com.lemon.mcdevmanagermp.utils.extension.formatDecimal
@@ -74,6 +75,9 @@ fun ProfitCard(
 ) {
     val colors = LocalAppColors.current
     val estimatedSettlement = profitPeriod?.estimateSettlement(profitData.totalProfit)
+    val estimatedAllocation = estimatedSettlement?.let { estimate ->
+        allocationSummary?.scaleToNetTotal(estimate - getTaxMoney(estimate))
+    }
 
     if (!isLoading) {
         Card(
@@ -235,6 +239,7 @@ fun ProfitCard(
                         allocationSummary?.let { summary ->
                             AllocationSummarySection(
                                 summary = summary,
+                                estimatedSummary = estimatedAllocation,
                                 onManageSharing = onManageSharing
                             )
                         }
@@ -250,6 +255,7 @@ fun ProfitCard(
 @Composable
 private fun AllocationSummarySection(
     summary: ProfitAllocationSummary,
+    estimatedSummary: ProfitAllocationSummary?,
     onManageSharing: (() -> Unit)?
 ) {
     val colors = LocalAppColors.current
@@ -261,7 +267,11 @@ private fun AllocationSummarySection(
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Text(
-            text = "人员分账（税后）",
+            text = if (estimatedSummary == null) {
+                "人员分账（税后）"
+            } else {
+                "人员分账（当前 / 预计完整周期，税后）"
+            },
             style = MaterialTheme.typography.labelMedium,
             color = colors.primary,
             fontWeight = FontWeight.SemiBold
@@ -273,10 +283,13 @@ private fun AllocationSummarySection(
                 color = colors.onSurfaceVariant
             )
         } else {
+            val estimatedByPerson = estimatedSummary?.payouts?.associateBy { it.personId }.orEmpty()
             summary.payouts.forEach { payout ->
                 DetailRow(
                     label = payout.personName,
-                    value = payout.amount.formatDecimal(2),
+                    value = estimatedByPerson[payout.personId]?.let { estimate ->
+                        "${payout.amount.formatDecimal(2)} / ${estimate.amount.formatDecimal(2)}"
+                    } ?: payout.amount.formatDecimal(2),
                     labelColor = colors.onSurfaceVariant,
                     valueColor = colors.textColor
                 )
@@ -285,14 +298,18 @@ private fun AllocationSummarySection(
         if (summary.unassignedAmount > 0.005) {
             DetailRow(
                 label = "未分配",
-                value = summary.unassignedAmount.formatDecimal(2),
+                value = estimatedSummary?.let {
+                    "${summary.unassignedAmount.formatDecimal(2)} / ${it.unassignedAmount.formatDecimal(2)}"
+                } ?: summary.unassignedAmount.formatDecimal(2),
                 labelColor = colors.error,
                 valueColor = colors.error
             )
         }
         DetailRow(
-            label = "税后合计",
-            value = summary.netTotal.formatDecimal(2),
+            label = if (estimatedSummary == null) "税后合计" else "税后合计 / 预计",
+            value = estimatedSummary?.let {
+                "${summary.netTotal.formatDecimal(2)} / ${it.netTotal.formatDecimal(2)}"
+            } ?: summary.netTotal.formatDecimal(2),
             labelColor = colors.onSurfaceVariant,
             valueColor = colors.primary
         )

@@ -26,6 +26,7 @@ data class MainState(
     val lastProfitData: ProfitData? = null,
     val profitPeriod: ProfitPeriod? = null,
     val lastProfitPeriod: ProfitPeriod? = null,
+    val thisMonthAllocation: ProfitAllocationSummary? = null,
     val lastMonthAllocation: ProfitAllocationSummary? = null,
     val isProfitLoading: Boolean = true,
     val profitExpanded: Boolean = false,

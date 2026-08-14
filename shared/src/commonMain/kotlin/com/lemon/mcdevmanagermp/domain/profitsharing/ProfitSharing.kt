@@ -30,6 +30,16 @@ data class ProfitAllocationSummary(
     val netTotal: Double = 0.0
 )
 
+fun ProfitAllocationSummary.scaleToNetTotal(targetNetTotal: Double): ProfitAllocationSummary? {
+    if (netTotal <= 0.0 || targetNetTotal <= 0.0) return null
+    val factor = targetNetTotal / netTotal
+    return copy(
+        payouts = payouts.map { it.copy(amount = it.amount * factor) },
+        unassignedAmount = unassignedAmount * factor,
+        netTotal = targetNetTotal
+    )
+}
+
 interface ProfitSharingRepository {
     val changes: Flow<Unit>
 

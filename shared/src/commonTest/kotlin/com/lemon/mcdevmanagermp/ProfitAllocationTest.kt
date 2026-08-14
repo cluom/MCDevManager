@@ -3,6 +3,7 @@ package com.lemon.mcdevmanagermp
 import com.lemon.mcdevmanagermp.domain.profitsharing.ModuleOwnership
 import com.lemon.mcdevmanagermp.domain.profitsharing.ProfitPerson
 import com.lemon.mcdevmanagermp.domain.profitsharing.calculateProfitAllocation
+import com.lemon.mcdevmanagermp.domain.profitsharing.scaleToNetTotal
 import com.lemon.mcdevmanagermp.utils.calculateProfit
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -56,5 +57,23 @@ class ProfitAllocationTest {
 
         assertEquals(0.0, result.payouts.single().amount, 0.001)
         assertEquals(result.netTotal, result.unassignedAmount, 0.001)
+    }
+
+    @Test
+    fun estimated_cycle_scales_every_person_and_unassigned_amount_to_projected_net_total() {
+        val current = calculateProfitAllocation(
+            profitData = calculateProfit(mapOf("mod-a" to 200_000.0, "mod-b" to 100_000.0)),
+            people = listOf(alice, bob),
+            ownerships = listOf(ModuleOwnership("mod-a", alice.id, 1.0))
+        )
+
+        val projected = current.scaleToNetTotal(current.netTotal * 2.5)!!
+        val currentByPerson = current.payouts.associateBy { it.personId }
+        val projectedByPerson = projected.payouts.associateBy { it.personId }
+
+        assertEquals(currentByPerson.getValue(alice.id).amount * 2.5, projectedByPerson.getValue(alice.id).amount, 0.001)
+        assertEquals(currentByPerson.getValue(bob.id).amount * 2.5, projectedByPerson.getValue(bob.id).amount, 0.001)
+        assertEquals(current.unassignedAmount * 2.5, projected.unassignedAmount, 0.001)
+        assertEquals(current.netTotal * 2.5, projected.netTotal, 0.001)
     }
 }

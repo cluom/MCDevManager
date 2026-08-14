@@ -63,6 +63,8 @@ class MainViewModel : BaseViewModel<MainState, MainAction, MainEffect>(MainState
             private set
         var cachedLastMonthProfitPeriod: ProfitPeriod? = null
             private set
+        var cachedThisMonthAllocation: ProfitAllocationSummary? = null
+            private set
         var cachedLastMonthAllocation: ProfitAllocationSummary? = null
             private set
         var cachedLastMonthLabel: String? = null
@@ -98,6 +100,7 @@ class MainViewModel : BaseViewModel<MainState, MainAction, MainEffect>(MainState
             cachedProfitPeriod = null
             cachedLastMonthProfitData = null
             cachedLastMonthProfitPeriod = null
+            cachedThisMonthAllocation = null
             cachedLastMonthAllocation = null
             cachedRankListData = emptyList()
         }
@@ -148,19 +151,20 @@ class MainViewModel : BaseViewModel<MainState, MainAction, MainEffect>(MainState
                     lastProfitData = cachedLastMonthProfitData,
                     profitPeriod = cachedProfitPeriod,
                     lastProfitPeriod = cachedLastMonthProfitPeriod,
+                    thisMonthAllocation = cachedThisMonthAllocation,
                     lastMonthAllocation = cachedLastMonthAllocation,
                     isProfitLoading = false,
                     showLastMonthProfit = cachedShowLastMonthProfit
                 )
             }
-            refreshLastMonthAllocation()
+            refreshProfitAllocations()
         } else {
             loadProfit()
         }
 
         viewModelScope.launch {
             profitSharingRepository.changes.collect {
-                refreshLastMonthAllocation()
+                refreshProfitAllocations()
             }
         }
 
@@ -296,6 +300,7 @@ class MainViewModel : BaseViewModel<MainState, MainAction, MainEffect>(MainState
                 cachedMonthLabel = "${now.year}年${now.month.number}月"
                 cachedLastMonthProfitData = result.lastMonth
                 cachedLastMonthProfitPeriod = result.lastMonthPeriod
+                cachedThisMonthAllocation = result.thisMonthAllocation
                 cachedLastMonthAllocation = result.lastMonthAllocation
                 val lastMonthNumber = if (now.month.number == 1) 12 else now.month.number - 1
                 val lastMonthYear = if (now.month.number == 1) now.year - 1 else now.year
@@ -308,6 +313,7 @@ class MainViewModel : BaseViewModel<MainState, MainAction, MainEffect>(MainState
                         lastProfitData = result.lastMonth,
                         profitPeriod = result.thisMonthPeriod,
                         lastProfitPeriod = result.lastMonthPeriod,
+                        thisMonthAllocation = result.thisMonthAllocation,
                         lastMonthAllocation = result.lastMonthAllocation,
                         isProfitLoading = false,
                         showLastMonthProfit = cachedShowLastMonthProfit
@@ -319,12 +325,26 @@ class MainViewModel : BaseViewModel<MainState, MainAction, MainEffect>(MainState
         }
     }
 
-    private fun refreshLastMonthAllocation() {
-        val profitData = cachedLastMonthProfitData ?: state.value.lastProfitData ?: return
+    private fun refreshProfitAllocations() {
+        val thisMonthProfit = cachedProfitData ?: state.value.profitData
+        val lastMonthProfit = cachedLastMonthProfitData ?: state.value.lastProfitData
+        if (thisMonthProfit == null && lastMonthProfit == null) return
         viewModelScope.launch {
-            val allocation = mainUseCase.calculateAllocation(currentAccountKey(), profitData)
-            cachedLastMonthAllocation = allocation
-            setState { copy(lastMonthAllocation = allocation) }
+            val accountKey = currentAccountKey()
+            val thisMonthAllocation = thisMonthProfit?.let {
+                mainUseCase.calculateAllocation(accountKey, it)
+            }
+            val lastMonthAllocation = lastMonthProfit?.let {
+                mainUseCase.calculateAllocation(accountKey, it)
+            }
+            cachedThisMonthAllocation = thisMonthAllocation
+            cachedLastMonthAllocation = lastMonthAllocation
+            setState {
+                copy(
+                    thisMonthAllocation = thisMonthAllocation,
+                    lastMonthAllocation = lastMonthAllocation
+                )
+            }
         }
     }
 
