@@ -25,7 +25,7 @@ import com.lemon.mcdevmanagermp.data.db.entity.PromotionTemplateEntity
         ProfitPersonEntity::class,
         ModuleOwnerEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 @ConstructedBy(AppDatabaseConstructor::class)
@@ -118,36 +118,83 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
     }
 }
 
-/** 数据库迁移 6→7：新增分账人员与模组归属权重表。 */
+/**
+ * 数据库迁移 6→7：account 表新增 email、password、rememberPassword 列（用于记住密码与多账号切换填充）。
+ */
 val MIGRATION_6_7 = object : Migration(6, 7) {
     override fun migrate(connection: SQLiteConnection) {
-        connection.execSQL(
-            """
-            CREATE TABLE IF NOT EXISTS profit_person (
-              id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-              accountKey TEXT NOT NULL,
-              name TEXT NOT NULL,
-              createdAt INTEGER NOT NULL
-            )
-            """.trimIndent()
-        )
-        connection.execSQL(
-            "CREATE UNIQUE INDEX IF NOT EXISTS index_profit_person_accountKey_name " +
-                    "ON profit_person (accountKey, name)"
-        )
-        connection.execSQL(
-            """
-            CREATE TABLE IF NOT EXISTS module_owner (
-              itemId TEXT NOT NULL,
-              personId INTEGER NOT NULL,
-              weight REAL NOT NULL,
-              PRIMARY KEY (itemId, personId),
-              FOREIGN KEY (personId) REFERENCES profit_person(id) ON UPDATE NO ACTION ON DELETE CASCADE
-            )
-            """.trimIndent()
-        )
-        connection.execSQL(
-            "CREATE INDEX IF NOT EXISTS index_module_owner_personId ON module_owner (personId)"
-        )
+        connection.ensureAccountCredentialColumns()
     }
+}
+
+/**
+ * 数据库迁移 7→8：保留 v1.2.5 的账号字段，并加入人员与模组权重分账表。
+ *
+ * 旧定制版也曾使用 schema 7，但其 6→7 只创建分账表。这里的所有操作均为幂等，
+ * 因而既能升级官方 v1.2.5 数据库，也能补齐旧定制版缺少的账号字段。
+ */
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(connection: SQLiteConnection) {
+        connection.ensureAccountCredentialColumns()
+        connection.ensureProfitSharingTables()
+    }
+}
+
+private fun SQLiteConnection.ensureAccountCredentialColumns() {
+    val emailExists = prepare(
+            "SELECT COUNT(*) FROM pragma_table_info('account') WHERE name = 'email'"
+        ).use { stmt ->
+            stmt.step()
+            stmt.getLong(0) > 0
+        }
+    if (!emailExists) {
+        execSQL("ALTER TABLE account ADD COLUMN email TEXT NOT NULL DEFAULT ''")
+    }
+    val passwordExists = prepare(
+            "SELECT COUNT(*) FROM pragma_table_info('account') WHERE name = 'password'"
+        ).use { stmt ->
+            stmt.step()
+            stmt.getLong(0) > 0
+        }
+    if (!passwordExists) {
+        execSQL("ALTER TABLE account ADD COLUMN password TEXT NOT NULL DEFAULT ''")
+    }
+    val rememberPasswordExists = prepare(
+            "SELECT COUNT(*) FROM pragma_table_info('account') WHERE name = 'rememberPassword'"
+        ).use { stmt ->
+            stmt.step()
+            stmt.getLong(0) > 0
+        }
+    if (!rememberPasswordExists) {
+        execSQL("ALTER TABLE account ADD COLUMN rememberPassword INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
+private fun SQLiteConnection.ensureProfitSharingTables() {
+    execSQL(
+        """
+        CREATE TABLE IF NOT EXISTS profit_person (
+          id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+          accountKey TEXT NOT NULL,
+          name TEXT NOT NULL,
+          createdAt INTEGER NOT NULL
+        )
+        """.trimIndent()
+    )
+    execSQL(
+        "CREATE UNIQUE INDEX IF NOT EXISTS index_profit_person_accountKey_name " +
+                "ON profit_person (accountKey, name)"
+    )
+    execSQL(
+        """
+        CREATE TABLE IF NOT EXISTS module_owner (
+          itemId TEXT NOT NULL,
+          personId INTEGER NOT NULL,
+          weight REAL NOT NULL,
+          PRIMARY KEY (itemId, personId),
+          FOREIGN KEY (personId) REFERENCES profit_person(id) ON UPDATE NO ACTION ON DELETE CASCADE
+        )
+        """.trimIndent()
+    )
+    execSQL("CREATE INDEX IF NOT EXISTS index_module_owner_personId ON module_owner (personId)")
 }
