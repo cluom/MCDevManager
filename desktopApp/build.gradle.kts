@@ -55,15 +55,30 @@ compose.desktop {
     }
 }
 
-tasks.register<Zip>("packagePortable") {
+val createPortableArchive by tasks.registering(Zip::class) {
     group = "released"
-    description = "Create a portable zip archive (免安装版)"
+    description = "Create the portable zip archive"
     dependsOn("createDistributable")
 
     from(layout.buildDirectory.dir("compose/binaries/main/app/${appName}"))
     into(appName)
     archiveFileName.set("$appName-$appVersion-portable.zip")
     destinationDirectory.set(layout.buildDirectory.dir("release/portable"))
+}
+
+val syncPortableToLocal by tasks.registering(Sync::class) {
+    group = "released"
+    description = "Synchronize the portable application to D:/software/MCDevManager"
+    dependsOn(createPortableArchive)
+
+    from(layout.buildDirectory.dir("compose/binaries/main/app/$appName"))
+    into("D:/software/MCDevManager")
+}
+
+tasks.register("packagePortable") {
+    group = "released"
+    description = "Create a portable zip archive and update the local portable application (免安装版)"
+    dependsOn(syncPortableToLocal)
 }
 
 tasks.register<Copy>("packageInstaller") {
