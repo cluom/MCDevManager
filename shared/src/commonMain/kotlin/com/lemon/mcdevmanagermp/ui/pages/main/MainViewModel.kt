@@ -8,6 +8,7 @@ import com.lemon.mcdevmanagermp.data.consts.enums.RankSubCategoryTypeEnum
 import com.lemon.mcdevmanagermp.data.page.RankCategoryData
 import com.lemon.mcdevmanagermp.data.repository.AccountRepositoryImpl
 import com.lemon.mcdevmanagermp.data.repository.AnalyzeRepositoryImpl
+import com.lemon.mcdevmanagermp.data.repository.IncomeRepositoryImpl
 import com.lemon.mcdevmanagermp.data.repository.MailboxRepositoryImpl
 import com.lemon.mcdevmanagermp.data.repository.ProfitSharingRepositoryImpl
 import com.lemon.mcdevmanagermp.data.repository.RankListRepositoryImpl
@@ -120,6 +121,7 @@ class MainViewModel : BaseViewModel<MainState, MainAction, MainEffect>(MainState
         userRepository = UserRepositoryImpl.INSTANCE,
         analyzeRepository = AnalyzeRepositoryImpl.INSTANCE,
         getResourceListUseCase = GetResourceListUseCase(ResourceRepositoryImpl.INSTANCE),
+        incomeRepository = IncomeRepositoryImpl.INSTANCE,
         profitSharingRepository = profitSharingRepository
     )
     private val rankListUseCase = RankListUseCase(

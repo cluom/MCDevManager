@@ -62,8 +62,10 @@ import com.lemon.mcdevmanagermp.ui.pages.main.MainViewModel
 import com.lemon.mcdevmanagermp.ui.theme.LocalAppColors
 import com.lemon.mcdevmanagermp.utils.ModuleIncomeDetail
 import com.lemon.mcdevmanagermp.utils.ProfitData
+import com.lemon.mcdevmanagermp.utils.calculationLabel
+import com.lemon.mcdevmanagermp.utils.summaryRows
+import com.lemon.mcdevmanagermp.utils.allocationNotice
 import com.lemon.mcdevmanagermp.utils.extension.formatDecimal
-import com.lemon.mcdevmanagermp.utils.getTaxMoney
 import com.lemon.mcdevmanagermp.utils.toModuleIncomeDetails
 import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalDate
@@ -152,7 +154,15 @@ fun IncomeDetailPage(initialMonthOffset: Int = 0, onBack: () -> Unit) {
                         state.errorMessage?.let { message ->
                             LoadErrorCard(message = message, onRetry = viewModel::retry)
                         }
-                        SummaryCard(profitData, modules)
+                        SummaryCard(profitData)
+                        if (profitData.settlement != null) {
+                            Text(
+                                "以下模组明细为估算，不是官方逐模组结算数据。" +
+                                    (profitData.allocationNotice() ?: ""),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.onSurfaceVariant
+                            )
+                        }
                         ModuleList(modules, columns)
                     }
                 }
@@ -288,7 +298,7 @@ private fun ProfitMonthPickerDialog(
 // ============================================================
 
 @Composable
-private fun SummaryCard(profitData: ProfitData, modules: List<ModuleIncomeDetail>) {
+private fun SummaryCard(profitData: ProfitData) {
     val colors = LocalAppColors.current
 
     Card(
@@ -316,6 +326,12 @@ private fun SummaryCard(profitData: ProfitData, modules: List<ModuleIncomeDetail
                 )
             }
 
+            Text(
+                profitData.calculationLabel(),
+                modifier = Modifier.padding(top = 8.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.onSurfaceVariant
+            )
             Spacer(Modifier.height(12.dp))
 
             Column(
@@ -325,22 +341,7 @@ private fun SummaryCard(profitData: ProfitData, modules: List<ModuleIncomeDetail
                     .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                DetailRow("月总流水(元)", (profitData.sumProfit / 100.0).formatDecimal(2), colors)
-                DetailRow(
-                    "开发者分成(元)",
-                    (profitData.developerProfit / 100.0).formatDecimal(2),
-                    colors
-                )
-                val totalShareReturn = modules.sumOf { it.shareReturn }
-                if (totalShareReturn > 0) {
-                    DetailRow("分成返还(元)", totalShareReturn.formatDecimal(2), colors)
-                }
-                DetailRow(
-                    "模组激励合计(元)",
-                    profitData.subsidyProfit.values.sum().formatDecimal(2),
-                    colors
-                )
-                DetailRow("流水激励(元)", profitData.profitSubsidy.formatDecimal(2), colors)
+                profitData.summaryRows().forEach { (label, value) -> DetailRow(label, value, colors) }
 
                 HorizontalDivider(color = colors.outlineVariant, thickness = 1.dp)
 
@@ -356,7 +357,7 @@ private fun SummaryCard(profitData: ProfitData, modules: List<ModuleIncomeDetail
                         color = colors.textColor
                     )
                     Text(
-                        text = profitData.totalProfit.formatDecimal(2),
+                        text = if (profitData.hasIncome) profitData.totalProfit.formatDecimal(2) else "—",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = colors.primary
@@ -368,15 +369,13 @@ private fun SummaryCard(profitData: ProfitData, modules: List<ModuleIncomeDetail
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "税后收益(元)",
+                        text = "税后净收益(元)",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = colors.textColor
                     )
                     Text(
-                        text = (profitData.totalProfit - getTaxMoney(profitData.totalProfit)).formatDecimal(
-                            2
-                        ),
+                        text = if (profitData.hasIncome) profitData.netIncome.formatDecimal(2) else "—",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = colors.primary

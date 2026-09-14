@@ -1,6 +1,7 @@
 package com.lemon.mcdevmanagermp.utils
 
 import kotlinx.serialization.Serializable
+import kotlin.math.abs
 
 @Serializable
 data class ProfitData(
@@ -11,7 +12,30 @@ data class ProfitData(
     val subsidyProfit: Map<String, Double> = emptyMap(),
     val subsidyPercent: Double = 0.0,
     val moduleDiamonds: Map<String, Double> = emptyMap(),
-    val moduleNames: Map<String, String> = emptyMap()
+    val moduleNames: Map<String, String> = emptyMap(),
+    val ecosystemFeeRatio: Double? = null,
+    val feeSourceMonth: String? = null,
+    val settlement: ProfitSettlement? = null,
+    val unavailableReason: String? = null
+) {
+    val hasIncome: Boolean get() = ecosystemFeeRatio != null || settlement != null
+    val exchangeRate: Double get() = settlement?.exchangeRate ?: 0.01
+    val netIncome: Double get() = settlement?.netIncome ?: (totalProfit - getTaxMoney(totalProfit))
+    val allocationFlowMatches: Boolean
+        get() = settlement == null || abs(moduleDiamonds.values.sum() - sumProfit) <= 0.02
+}
+
+/** 月度官方总账，不使用可能累积了多个月份的 available_income。 */
+@Serializable
+data class ProfitSettlement(
+    val month: String,
+    val exchangeRate: Double,
+    val incentiveIncome: Double,
+    val tax: Double,
+    val techServiceFee: Double,
+    val totalUsagePrice: Double,
+    val netIncome: Double,
+    val sharableFlow: Double?
 )
 
 data class ModuleIncomeDetail(
@@ -31,20 +55,21 @@ private fun getSharedProfit(profit: Double): Double = when {
 }
 
 fun ProfitData.toModuleIncomeDetails(): List<ModuleIncomeDetail> {
+    val feeRatio = ecosystemFeeRatio ?: return emptyList()
     if (subsidyPercent == 0.0 && moduleDiamonds.isEmpty()) return emptyList()
     return moduleDiamonds
         .filter { (_, revenue) -> revenue > 0 }
         .map { (itemId, revenue) ->
             val sharedProfit = getSharedProfit(revenue)
-            val shareReturnDiamonds = revenue * 0.7 * (1 - sharedProfit) * subsidyPercent
-            val shareRmb = getDeveloperProfit(revenue, subsidyPercent) / 100.0
+            val shareReturnDiamonds = revenue * (1 - feeRatio) * (1 - sharedProfit) * subsidyPercent
+            val shareRmb = getDeveloperProfit(revenue, subsidyPercent, feeRatio) * exchangeRate
             val subsidy = subsidyProfit[itemId] ?: 0.0
             ModuleIncomeDetail(
                 moduleId = itemId,
                 moduleName = moduleNames[itemId] ?: itemId,
-                flowIncome = revenue / 100.0,
+                flowIncome = revenue * exchangeRate,
                 developerShare = shareRmb,
-                shareReturn = shareReturnDiamonds / 100.0,
+                shareReturn = shareReturnDiamonds * exchangeRate,
                 subsidyAmount = subsidy,
                 totalIncome = shareRmb + subsidy
             )
@@ -53,9 +78,17 @@ fun ProfitData.toModuleIncomeDetails(): List<ModuleIncomeDetail> {
 
 fun calculateProfit(
     itemProfitMap: Map<String, Double>,
-    moduleNames: Map<String, String> = emptyMap()
+    moduleNames: Map<String, String> = emptyMap(),
+    ecosystemFeeRatio: Double? = null
 ): ProfitData {
     val sumProfit = itemProfitMap.values.sum()
+    if (ecosystemFeeRatio == null) return ProfitData(
+        sumProfit = sumProfit,
+        moduleDiamonds = itemProfitMap,
+        moduleNames = moduleNames,
+        unavailableReason = "未取得历史账单生态费率，暂不估算收益与分账"
+    )
+    require(ecosystemFeeRatio.isFinite() && ecosystemFeeRatio in 0.0..1.0)
     val subsidyPercent = when {
         sumProfit < 100_000 -> 0.5
         sumProfit < 300_000 -> 0.3
@@ -66,7 +99,7 @@ fun calculateProfit(
 
     var totalSharedProfit = 0.0
     for ((_, profit) in itemProfitMap) {
-        val sharedProfit = getDeveloperProfit(profit, subsidyPercent)
+        val sharedProfit = getDeveloperProfit(profit, subsidyPercent, ecosystemFeeRatio)
         totalSharedProfit += sharedProfit
     }
 
@@ -77,7 +110,8 @@ fun calculateProfit(
         subsidyProfit = emptyMap(),
         subsidyPercent = 0.0,
         moduleDiamonds = itemProfitMap,
-        moduleNames = moduleNames
+        moduleNames = moduleNames,
+        ecosystemFeeRatio = ecosystemFeeRatio
     )
 
     val subsidyValues = mutableMapOf<String, Double>()
@@ -124,7 +158,8 @@ fun calculateProfit(
         subsidyProfit = subsidyValues,
         subsidyPercent = subsidyPercent,
         moduleDiamonds = itemProfitMap,
-        moduleNames = moduleNames
+        moduleNames = moduleNames,
+        ecosystemFeeRatio = ecosystemFeeRatio
     )
 }
 
@@ -140,11 +175,12 @@ fun getTaxMoney(totalProfit: Double): Double {
     }
 }
 
-fun getDeveloperProfit(profit: Double, subsidyPercent: Double): Double {
+fun getDeveloperProfit(profit: Double, subsidyPercent: Double, ecosystemFeeRatio: Double): Double {
+    require(ecosystemFeeRatio.isFinite() && ecosystemFeeRatio in 0.0..1.0)
     val sharedProfit = when {
         profit < 1_000_000 -> 0.5
         profit < 10_000_000 -> 0.525
         else -> 0.55
     }
-    return profit * (1 - 0.3) * (sharedProfit + (1 - sharedProfit) * subsidyPercent)
+    return profit * (1 - ecosystemFeeRatio) * (sharedProfit + (1 - sharedProfit) * subsidyPercent)
 }

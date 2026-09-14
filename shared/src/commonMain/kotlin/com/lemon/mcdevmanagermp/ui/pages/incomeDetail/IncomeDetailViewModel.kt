@@ -3,6 +3,7 @@ package com.lemon.mcdevmanagermp.ui.pages.incomeDetail
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lemon.mcdevmanagermp.data.repository.AnalyzeRepositoryImpl
+import com.lemon.mcdevmanagermp.data.repository.IncomeRepositoryImpl
 import com.lemon.mcdevmanagermp.data.repository.ResourceRepositoryImpl
 import com.lemon.mcdevmanagermp.data.repository.UserRepositoryImpl
 import com.lemon.mcdevmanagermp.domain.main.MainUseCase
@@ -29,7 +30,8 @@ internal class IncomeDetailViewModel(
     private val mainUseCase = MainUseCase(
         userRepository = UserRepositoryImpl.INSTANCE,
         analyzeRepository = AnalyzeRepositoryImpl.INSTANCE,
-        getResourceListUseCase = GetResourceListUseCase(ResourceRepositoryImpl.INSTANCE)
+        getResourceListUseCase = GetResourceListUseCase(ResourceRepositoryImpl.INSTANCE),
+        incomeRepository = IncomeRepositoryImpl.INSTANCE
     )
     private val cache = mutableMapOf<ProfitMonth, ProfitData>()
     private val _state = MutableStateFlow(
@@ -42,7 +44,9 @@ internal class IncomeDetailViewModel(
     val state = _state.asStateFlow()
 
     init {
-        if (initialData != null) cache[initialMonth] = initialData else load(initialMonth)
+        if (initialData != null) cache[initialMonth] = initialData
+        // 首页缓存可能生成于账单发布前，进入详情时重新核对官方账单。
+        load(initialMonth, force = true)
     }
 
     fun selectMonth(month: ProfitMonth) {
@@ -59,7 +63,11 @@ internal class IncomeDetailViewModel(
             return
         }
 
-        _state.value = IncomeDetailState(selectedMonth = month, isLoading = true)
+        _state.value = IncomeDetailState(
+            selectedMonth = month,
+            profitData = cache[month] ?: ProfitData(),
+            isLoading = true
+        )
         viewModelScope.launch {
             try {
                 val data = mainUseCase.computeMonthProfit(month.year, month.month)

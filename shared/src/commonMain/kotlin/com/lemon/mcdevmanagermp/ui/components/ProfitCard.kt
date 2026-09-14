@@ -53,6 +53,9 @@ import com.lemon.mcdevmanagermp.domain.profitsharing.ProfitAllocationSummary
 import com.lemon.mcdevmanagermp.domain.profitsharing.scaleToNetTotal
 import com.lemon.mcdevmanagermp.ui.theme.LocalAppColors
 import com.lemon.mcdevmanagermp.utils.ProfitData
+import com.lemon.mcdevmanagermp.utils.calculationLabel
+import com.lemon.mcdevmanagermp.utils.summaryRows
+import com.lemon.mcdevmanagermp.utils.allocationNotice
 import com.lemon.mcdevmanagermp.utils.extension.formatDecimal
 import com.lemon.mcdevmanagermp.utils.getTaxMoney
 import kotlinx.datetime.LocalDate
@@ -74,7 +77,9 @@ fun ProfitCard(
     onManageSharing: (() -> Unit)? = null
 ) {
     val colors = LocalAppColors.current
-    val estimatedSettlement = profitPeriod?.estimateSettlement(profitData.totalProfit)
+    val estimatedSettlement = if (profitData.hasIncome && profitData.settlement == null) {
+        profitPeriod?.estimateSettlement(profitData.totalProfit)
+    } else null
     val estimatedAllocation = estimatedSettlement?.let { estimate ->
         allocationSummary?.scaleToNetTotal(estimate - getTaxMoney(estimate))
     }
@@ -119,7 +124,12 @@ fun ProfitCard(
                                 color = colors.onSurfaceVariant
                             )
                         }
-                        allocationSummary?.let { summary ->
+                        Text(
+                            text = profitData.calculationLabel(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.onSurfaceVariant
+                        )
+                        allocationSummary?.takeIf { profitData.hasIncome }?.let { summary ->
                             Text(
                                 text = if (summary.payouts.isEmpty()) {
                                     "尚未配置人员分账 · 点击展开管理"
@@ -148,13 +158,13 @@ fun ProfitCard(
                     }
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
-                            text = profitData.totalProfit.formatDecimal(2),
+                            text = if (profitData.hasIncome) profitData.totalProfit.formatDecimal(2) else "—",
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold,
                             color = colors.primary
                         )
                         Text(
-                            text = "含扣税 ${(profitData.totalProfit - getTaxMoney(profitData.totalProfit)).formatDecimal(2)}",
+                            text = if (profitData.hasIncome) "税后净收益 ${profitData.netIncome.formatDecimal(2)}" else "等待账单",
                             style = MaterialTheme.typography.bodySmall,
                             color = colors.onSurfaceVariant
                         )
@@ -185,13 +195,10 @@ fun ProfitCard(
                     ) {
                         DetailSection(
                             color = colors.surfaceContainerHighest,
-                            rows = listOf(
-                                "月总流水(元)" to (profitData.sumProfit / 100.0).formatDecimal(2),
-                                "开发者分成(元)" to (profitData.developerProfit / 100.0).formatDecimal(2)
-                            )
+                            rows = profitData.summaryRows()
                         )
 
-                        if (profitData.subsidyProfit.isNotEmpty()) {
+                        if (profitData.settlement == null && profitData.subsidyProfit.isNotEmpty()) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -216,7 +223,7 @@ fun ProfitCard(
                             }
                         }
 
-                        Row(
+                        if (profitData.hasIncome && profitData.settlement == null) Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
@@ -236,7 +243,10 @@ fun ProfitCard(
                             )
                         }
 
-                        allocationSummary?.let { summary ->
+                        profitData.allocationNotice()?.let { notice ->
+                            Text(notice, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+                        }
+                        allocationSummary?.takeIf { profitData.hasIncome }?.let { summary ->
                             AllocationSummarySection(
                                 summary = summary,
                                 estimatedSummary = estimatedAllocation,

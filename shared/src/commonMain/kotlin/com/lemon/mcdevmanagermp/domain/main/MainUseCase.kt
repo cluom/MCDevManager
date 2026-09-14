@@ -6,6 +6,8 @@ import com.lemon.mcdevmanagermp.data.consts.LoginException
 import com.lemon.mcdevmanagermp.data.vo.netease.user.LevelInfoVO
 import com.lemon.mcdevmanagermp.data.vo.netease.user.OverviewVO
 import com.lemon.mcdevmanagermp.data.vo.netease.user.UserInfoVO
+import com.lemon.mcdevmanagermp.data.vo.netease.income.IncomeVO
+import com.lemon.mcdevmanagermp.domain.income.IncomeRepository
 import com.lemon.mcdevmanagermp.domain.analyze.AnalyzeRepository
 import com.lemon.mcdevmanagermp.domain.profitsharing.ProfitAllocationSummary
 import com.lemon.mcdevmanagermp.domain.profitsharing.ProfitSharingRepository
@@ -13,7 +15,7 @@ import com.lemon.mcdevmanagermp.domain.profitsharing.calculateProfitAllocation
 import com.lemon.mcdevmanagermp.domain.resource.GetResourceListUseCase
 import com.lemon.mcdevmanagermp.domain.user.UserRepository
 import com.lemon.mcdevmanagermp.utils.ProfitData
-import com.lemon.mcdevmanagermp.utils.calculateProfit
+import com.lemon.mcdevmanagermp.utils.Logger
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.datetime.DateTimeUnit
@@ -111,6 +113,7 @@ class MainUseCase(
     private val userRepository: UserRepository,
     private val analyzeRepository: AnalyzeRepository,
     private val getResourceListUseCase: GetResourceListUseCase,
+    private val incomeRepository: IncomeRepository,
     private val profitSharingRepository: ProfitSharingRepository? = null
 ) {
     suspend fun loadDashboard(): MainDashboardData = coroutineScope {
@@ -133,6 +136,7 @@ class MainUseCase(
         includeLastMonth: Boolean,
         includeNextMonth: Boolean
     ): ProfitResult = coroutineScope {
+        val billsDeferred = async { loadSettlementBills() }
         val currentMonth = ProfitMonth(year, month)
         val thisMonthDeferred = async {
             currentMonth to getOneMonthComponentDiamonds(currentMonth.year, currentMonth.month)
@@ -153,9 +157,13 @@ class MainUseCase(
         val (thisMonth, thisMonthData) = thisMonthDeferred.await()
         val lastMonthResult = lastMonthDeferred?.await()
         val nextMonthResult = nextMonthDeferred?.await()
-        val thisMonthProfit = thisMonthData.toProfitData()
-        val lastMonthProfit = lastMonthResult?.second?.toProfitData()
-        val nextMonthProfit = nextMonthResult?.second?.toProfitData()
+        val (bills, billError) = billsDeferred.await()
+        fun profit(target: ProfitMonth, data: MonthDiamondData) = calculateMonthlyProfit(
+            target.year, target.month, data.moduleDiamonds, data.moduleNames, bills, billError
+        )
+        val thisMonthProfit = profit(thisMonth, thisMonthData)
+        val lastMonthProfit = lastMonthResult?.let { (target, data) -> profit(target, data) }
+        val nextMonthProfit = nextMonthResult?.let { (target, data) -> profit(target, data) }
 
         ProfitResult(
             thisMonth = thisMonthProfit,
@@ -170,8 +178,21 @@ class MainUseCase(
         )
     }
 
-    suspend fun computeMonthProfit(year: Int, month: Int): ProfitData =
-        getOneMonthComponentDiamonds(year, month).toProfitData()
+    suspend fun computeMonthProfit(year: Int, month: Int): ProfitData = coroutineScope {
+        val billsDeferred = async { loadSettlementBills() }
+        val data = getOneMonthComponentDiamonds(year, month)
+        val (bills, billError) = billsDeferred.await()
+        calculateMonthlyProfit(year, month, data.moduleDiamonds, data.moduleNames, bills, billError)
+    }
+
+    private suspend fun loadSettlementBills(): Pair<List<IncomeVO>, String?> =
+        when (val result = incomeRepository.getIncome("all")) {
+            is NetworkState.Success -> result.data?.incomes.orEmpty() to null
+            is NetworkState.Error -> {
+                Logger.e("收益速算的官方账单加载失败", result.e)
+                emptyList<IncomeVO>() to "官方账单获取失败，请刷新重试；暂不使用固定费率估算"
+            }
+        }
 
     suspend fun calculateAllocation(
         accountKey: String,
@@ -275,9 +296,6 @@ class MainUseCase(
         }
     }
 }
-
-private fun MonthDiamondData.toProfitData(): ProfitData =
-    calculateProfit(moduleDiamonds, moduleNames)
 
 private fun ProfitMonth.toPeriod(data: MonthDiamondData, today: LocalDate): ProfitPeriod =
     createProfitPeriod(year, month, data.dataThroughDate, today)

@@ -17,7 +17,8 @@ class ProfitAllocationTest {
     fun multiple_owners_split_module_net_income_by_weight() {
         val profit = calculateProfit(
             itemProfitMap = mapOf("mod-a" to 200_000.0),
-            moduleNames = mapOf("mod-a" to "模组A")
+            moduleNames = mapOf("mod-a" to "模组A"),
+            ecosystemFeeRatio = 0.3
         )
 
         val result = calculateProfitAllocation(
@@ -37,7 +38,7 @@ class ProfitAllocationTest {
 
     @Test
     fun single_owner_receives_full_module_income_without_weight_requirement() {
-        val profit = calculateProfit(mapOf("mod-a" to 200_000.0))
+        val profit = calculateProfit(mapOf("mod-a" to 200_000.0), ecosystemFeeRatio = 0.3)
 
         val result = calculateProfitAllocation(
             profitData = profit,
@@ -51,7 +52,7 @@ class ProfitAllocationTest {
 
     @Test
     fun unowned_modules_are_reported_as_unassigned() {
-        val profit = calculateProfit(mapOf("mod-a" to 200_000.0))
+        val profit = calculateProfit(mapOf("mod-a" to 200_000.0), ecosystemFeeRatio = 0.3)
 
         val result = calculateProfitAllocation(profit, listOf(alice), emptyList())
 
@@ -62,7 +63,7 @@ class ProfitAllocationTest {
     @Test
     fun estimated_cycle_scales_every_person_and_unassigned_amount_to_projected_net_total() {
         val current = calculateProfitAllocation(
-            profitData = calculateProfit(mapOf("mod-a" to 200_000.0, "mod-b" to 100_000.0)),
+            profitData = calculateProfit(mapOf("mod-a" to 200_000.0, "mod-b" to 100_000.0), ecosystemFeeRatio = 0.3),
             people = listOf(alice, bob),
             ownerships = listOf(ModuleOwnership("mod-a", alice.id, 1.0))
         )

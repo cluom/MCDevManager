@@ -37,6 +37,15 @@ data class IncomeVO(
     val techServiceFee: Double = 0.0,
     @SerialName("total_diamond")
     val totalDiamond: Int = 0,
+    // 单位为钻石；缺字段不能按零处理。
+    @SerialName("channel_ip_cost")
+    val channelIpCost: Double? = null,
+    @SerialName("sharable_flow")
+    val sharableFlow: Double? = null,
+    @SerialName("developer_share")
+    val developerShare: Double? = null,
+    @SerialName("exchange_rate")
+    val exchangeRate: String? = null,
     @SerialName("total_usage_price")
     val totalUsagePrice: Double = 0.0,
     val type: String = ""

@@ -1,7 +1,6 @@
 package com.lemon.mcdevmanagermp.domain.profitsharing
 
 import com.lemon.mcdevmanagermp.utils.ProfitData
-import com.lemon.mcdevmanagermp.utils.getTaxMoney
 import com.lemon.mcdevmanagermp.utils.toModuleIncomeDetails
 import kotlinx.coroutines.flow.Flow
 
@@ -55,13 +54,19 @@ fun calculateProfitAllocation(
     people: List<ProfitPerson>,
     ownerships: List<ModuleOwnership>
 ): ProfitAllocationSummary {
-    val netTotal = profitData.totalProfit - getTaxMoney(profitData.totalProfit)
+    val netTotal = profitData.netIncome
     if (netTotal <= 0.0) {
         return ProfitAllocationSummary(
             payouts = people.map { PersonPayout(it.id, it.name, 0.0) },
             netTotal = netTotal.coerceAtLeast(0.0)
         )
     }
+
+    if (!profitData.allocationFlowMatches) return ProfitAllocationSummary(
+        payouts = people.map { PersonPayout(it.id, it.name, 0.0) },
+        unassignedAmount = netTotal,
+        netTotal = netTotal
+    )
 
     val moduleDetails = profitData.toModuleIncomeDetails()
     val moduleBaseTotal = moduleDetails.sumOf { it.totalIncome }
@@ -76,7 +81,12 @@ fun calculateProfitAllocation(
         } else {
             0.0
         }
-        val moduleNetIncome = (module.totalIncome + globalSubsidyShare) * netFactor
+        // 已出账月份的分账池严格使用官方税后总额；逐模组金额仅作为权重。
+        val moduleNetIncome = if (profitData.settlement != null) {
+            if (moduleBaseTotal > 0) module.totalIncome / moduleBaseTotal * netTotal else 0.0
+        } else {
+            (module.totalIncome + globalSubsidyShare) * netFactor
+        }
         val owners = ownershipsByItem[module.moduleId]
             .orEmpty()
             .filter { it.personId in peopleById }
