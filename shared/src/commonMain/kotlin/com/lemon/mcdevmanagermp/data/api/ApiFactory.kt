@@ -103,7 +103,10 @@ object ApiFactory {
                         Logger.d("KtorLog:\n$message")
                     }
                 }
-                sanitizeHeader { it == HttpHeaders.Cookie || it == HttpHeaders.SetCookie || it == HttpHeaders.Authorization }
+                sanitizeHeader { header ->
+                    listOf(HttpHeaders.Cookie, HttpHeaders.SetCookie, HttpHeaders.Authorization)
+                        .any { it.equals(header, ignoreCase = true) }
+                }
                 // 登录响应正文也可能含令牌，不记录请求/响应正文。
                 level = LogLevel.HEADERS
             }
