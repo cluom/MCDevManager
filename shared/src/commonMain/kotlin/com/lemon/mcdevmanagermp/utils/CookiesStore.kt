@@ -61,12 +61,14 @@ open class SessionCookieStore {
     }
 
     fun clearCookies() {
+        Logger.d("SESSION_DIAG v=1 event=session_clear previousCount=${state.value.cookies.size}")
         state.update { State(generation = it.generation + 1) }
     }
 
     /** 绑定已保存账号，禁止用“最后使用账号”猜测新 Cookie 属于谁。 */
     fun bindAccount(accountId: Long, persistedCookies: Map<String, String>) {
         state.update { it.copy(accountId = accountId, persisted = persistedCookies.toMap()) }
+        Logger.d("SESSION_DIAG v=1 event=session_bind account=$accountId ${SessionDiagnostics.snapshot(state.value.cookies)}")
     }
 
     suspend fun persistChanges(save: suspend (Long, Map<String, String>) -> Unit) {

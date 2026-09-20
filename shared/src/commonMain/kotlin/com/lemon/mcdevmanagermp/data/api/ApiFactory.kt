@@ -4,7 +4,6 @@ import com.lemon.mcdevmanagermp.data.common.JSONConverter
 import com.lemon.mcdevmanagermp.data.consts.TRAILING_SLASH_MARKER
 import com.lemon.mcdevmanagermp.data.repository.SessionCookiePersistence
 import com.lemon.mcdevmanagermp.utils.CookiesStore
-import com.lemon.mcdevmanagermp.utils.Logger
 import de.jensklingenberg.ktorfit.Ktorfit
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.HttpTimeout
@@ -12,17 +11,10 @@ import io.ktor.client.plugins.api.createClientPlugin
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.cookies.HttpCookies
 import io.ktor.client.plugins.defaultRequest
-import io.ktor.client.plugins.logging.LogLevel
-import io.ktor.client.plugins.logging.Logging
 import io.ktor.http.ContentType
-import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.encodedPath
 import io.ktor.serialization.kotlinx.json.json
-import io.ktor.util.AttributeKey
-import kotlin.time.TimeMark
-import kotlin.time.TimeSource
-import io.ktor.client.plugins.logging.Logger as KtorLogger
 
 object ApiFactory {
     private val cookiesStorage = SessionCookieStorage(CookiesStore, SessionCookiePersistence::persist)
@@ -42,23 +34,6 @@ object ApiFactory {
     }
 
 
-    private val TimeMonitorPlugin = createClientPlugin("TimeMonitorPlugin") {
-        onRequest { request, _ ->
-            // 在请求属性中记录开始时间
-            request.attributes.put(AttributeKey("StartTime"), TimeSource.Monotonic.markNow())
-        }
-
-        onResponse { response ->
-            val startTime =
-                response.call.request.attributes.getOrNull(AttributeKey<TimeMark>("StartTime"))
-            startTime?.let {
-                val elapsed = it.elapsedNow().inWholeMilliseconds
-                Logger.d("拦截器:\n请求 ${response.call.request.url} 耗时: ${elapsed}ms")
-            }
-            // Set-Cookie 统一由 HttpCookies 处理，避免二次解析覆盖正确值。
-        }
-    }
-
     private val jsonHttpClient: HttpClient by lazy {
         HttpClient {
             expectSuccess = true
@@ -68,7 +43,6 @@ object ApiFactory {
             install(ContentNegotiation) { json(JSONConverter) }
 
             install(TrailingSlashPlugin)
-            install(TimeMonitorPlugin)
             install(HttpTimeout) {
                 connectTimeoutMillis = 60_000
                 requestTimeoutMillis = 60_000
@@ -77,6 +51,7 @@ object ApiFactory {
             install(HttpCookies) {
                 storage = cookiesStorage
             }
+            installSessionDiagnostics()
         }
     }
 
@@ -87,7 +62,6 @@ object ApiFactory {
                 contentType(ContentType.Application.Json)
             }
             install(ContentNegotiation) { json(JSONConverter) }
-            install(TimeMonitorPlugin)
             install(HttpTimeout) {
                 connectTimeoutMillis = 60_000
                 requestTimeoutMillis = 120_000
@@ -96,20 +70,7 @@ object ApiFactory {
             install(HttpCookies) {
                 storage = cookiesStorage
             }
-            install(Logging) {
-                logger = object : KtorLogger {
-                    override fun log(message: String) {
-                        // 使用你自己的 Logger 输出，Ktor 会自动格式化好 请求头/体/响应
-                        Logger.d("KtorLog:\n$message")
-                    }
-                }
-                sanitizeHeader { header ->
-                    listOf(HttpHeaders.Cookie, HttpHeaders.SetCookie, HttpHeaders.Authorization)
-                        .any { it.equals(header, ignoreCase = true) }
-                }
-                // 登录响应正文也可能含令牌，不记录请求/响应正文。
-                level = LogLevel.HEADERS
-            }
+            installSessionDiagnostics()
         }
     }
 
@@ -117,7 +78,6 @@ object ApiFactory {
         HttpClient {
             expectSuccess = true
             install(ContentNegotiation) { json(JSONConverter) }
-            install(TimeMonitorPlugin)
             install(HttpTimeout) {
                 connectTimeoutMillis = 15_000
                 requestTimeoutMillis = 60_000  // 上传文件需要更长超时
@@ -126,6 +86,7 @@ object ApiFactory {
             install(HttpCookies) {
                 storage = cookiesStorage
             }
+            installSessionDiagnostics()
         }
     }
 
@@ -140,6 +101,7 @@ object ApiFactory {
             install(HttpCookies) {
                 storage = cookiesStorage
             }
+            installSessionDiagnostics()
         }
     }
 

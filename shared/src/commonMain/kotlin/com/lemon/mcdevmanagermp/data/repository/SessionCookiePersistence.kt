@@ -4,6 +4,7 @@ import com.lemon.mcdevmanagermp.data.common.AppContext
 import com.lemon.mcdevmanagermp.data.common.JSONConverter
 import com.lemon.mcdevmanagermp.utils.CookiesStore
 import com.lemon.mcdevmanagermp.utils.Logger
+import com.lemon.mcdevmanagermp.utils.SessionDiagnostics
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.encodeToString
 
@@ -15,7 +16,7 @@ internal object SessionCookiePersistence {
                 AppContext.database.accountDao().updateCookiesById(
                     accountId, JSONConverter.encodeToString(cookies)
                 )
-                Logger.d("会话 Cookie 已更新保存（不记录凭据内容）")
+                Logger.d("SESSION_DIAG v=1 event=cookie_persist account=$accountId ${SessionDiagnostics.snapshot(cookies)}")
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e

@@ -1,6 +1,8 @@
 package com.lemon.mcdevmanagermp.data.api
 
 import com.lemon.mcdevmanagermp.utils.SessionCookieStore
+import com.lemon.mcdevmanagermp.utils.Logger
+import com.lemon.mcdevmanagermp.utils.SessionDiagnostics
 import io.ktor.client.plugins.cookies.CookiesStorage
 import io.ktor.http.Cookie
 import io.ktor.http.Url
@@ -16,7 +18,15 @@ internal class SessionCookieStorage(
 
     override suspend fun addCookie(requestUrl: Url, cookie: Cookie) {
         if (!isTrusted(requestUrl)) return
+        val previous = store.getCookie(cookie.name)
         store.addCookie(cookie)
+        val current = store.getCookie(cookie.name)
+        if (previous != current) {
+            // Ktor 也会捕获请求头，因此不能把此回调一概标成“服务端更新”。
+            Logger.d("SESSION_DIAG v=1 event=cookie_update source=ktor_storage endpoint=${SessionDiagnostics.endpoint(requestUrl)} " +
+                "incomingEncoding=${cookie.encoding} before=[${SessionDiagnostics.cookie(cookie.name, previous)}] " +
+                "after=[${SessionDiagnostics.cookie(cookie.name, current)}]")
+        }
         persist()
     }
 

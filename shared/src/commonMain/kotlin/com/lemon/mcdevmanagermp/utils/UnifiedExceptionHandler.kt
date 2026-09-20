@@ -85,36 +85,36 @@ object UnifiedExceptionHandler {
 
         return when (e) {
             is ConnectTimeoutException, is SocketTimeoutException -> {
-                Logger.e("$TAG:链接超时", e)
+                Logger.e("$TAG:链接超时 ${SessionDiagnostics.failure(e)}")
                 NetworkState.Error("网络好像被末影人搬走了", e)
             }
 
             is ResponseException -> {
                 when (val statusCode = e.response.status.value) {
                     401 -> {
-                        Logger.e("$TAG:Token失效", e)
+                        Logger.e("$TAG:Token失效 ${SessionDiagnostics.failure(e)}")
                         NetworkState.Error("登录过期啦!", LoginException("登录过期啦!"))
                     }
 
                     403 -> {
-                        Logger.e("$TAG:请求受限", e)
+                        Logger.e("$TAG:请求受限 ${SessionDiagnostics.failure(e)}")
                         NetworkState.Error("请求过于频繁,请稍后再次尝试", e)
                     }
 
                     else -> {
-                        Logger.e("$TAG:HTTP错误 $statusCode", e)
+                        Logger.e("$TAG:HTTP错误 $statusCode ${SessionDiagnostics.failure(e)}")
                         NetworkState.Error("服务器开小差了 ($statusCode)", e)
                     }
                 }
             }
 
             is IOException -> {
-                Logger.e("$TAG:网络错误", e)
+                Logger.e("$TAG:网络错误 ${SessionDiagnostics.failure(e)}")
                 NetworkState.Error("服务器掉进深暗之域了", e)
             }
 
             else -> {
-                Logger.e("$TAG:未知错误", e)
+                Logger.e("$TAG:未知错误 ${SessionDiagnostics.failure(e)}")
                 NetworkState.Error("未知错误，请联系管理员", e)
             }
         }
@@ -148,7 +148,7 @@ object UnifiedExceptionHandler {
         return when (state) {
             is NetworkState.Success -> state.data
             is NetworkState.Error -> {
-                Logger.e("$TAG: 请求发生错误: ${state.msg}", state.e)
+                Logger.e("$TAG: 请求发生错误: ${state.msg} ${state.e?.let(SessionDiagnostics::failure).orEmpty()}")
                 throw NetworkException(state.msg, state.e)
             }
         }

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import com.lemon.mcdevmanagermp.data.common.NetworkState
 import com.lemon.mcdevmanagermp.data.consts.CookiesExpiredException
 import com.lemon.mcdevmanagermp.utils.Logger
+import com.lemon.mcdevmanagermp.utils.SessionDiagnostics
 import com.lemon.mcdevmanagermp.utils.extension.IUiAction
 import com.lemon.mcdevmanagermp.utils.extension.IUiEffect
 import com.lemon.mcdevmanagermp.utils.extension.IUiState
@@ -44,7 +45,7 @@ abstract class BaseViewModel<STATE : IUiState, ACTION : IUiAction, EFFECT : IUiE
         if (result.e is CookiesExpiredException) {
             sendEffect(onNeedReLogin())
         } else {
-            Logger.e("请求失败: ${result.msg}\n${result.e}")
+            Logger.e("请求失败: ${result.msg} ${result.e?.let(SessionDiagnostics::failure).orEmpty()}")
             sendEffect(onShowToast("请求失败: ${result.msg}"))
         }
     }
