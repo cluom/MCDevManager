@@ -25,4 +25,7 @@ interface AccountDao {
 
     @Query("UPDATE account SET nickname = :nickname WHERE id = :id")
     suspend fun updateNicknameById(id: Long, nickname: String)
+
+    @Query("UPDATE account SET cookiesJson = :cookiesJson WHERE id = :id")
+    suspend fun updateCookiesById(id: Long, cookiesJson: String)
 }

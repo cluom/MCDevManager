@@ -2,6 +2,7 @@ package com.lemon.mcdevmanagermp.data.api
 
 import com.lemon.mcdevmanagermp.data.common.JSONConverter
 import com.lemon.mcdevmanagermp.data.consts.TRAILING_SLASH_MARKER
+import com.lemon.mcdevmanagermp.data.repository.SessionCookiePersistence
 import com.lemon.mcdevmanagermp.utils.CookiesStore
 import com.lemon.mcdevmanagermp.utils.Logger
 import de.jensklingenberg.ktorfit.Ktorfit
@@ -9,15 +10,12 @@ import io.ktor.client.HttpClient
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.api.createClientPlugin
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.plugins.cookies.CookiesStorage
 import io.ktor.client.plugins.cookies.HttpCookies
 import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logging
 import io.ktor.http.ContentType
-import io.ktor.http.Cookie
 import io.ktor.http.HttpHeaders
-import io.ktor.http.Url
 import io.ktor.http.contentType
 import io.ktor.http.encodedPath
 import io.ktor.serialization.kotlinx.json.json
@@ -27,22 +25,7 @@ import kotlin.time.TimeSource
 import io.ktor.client.plugins.logging.Logger as KtorLogger
 
 object ApiFactory {
-    private val cookiesStorage = object : CookiesStorage {
-        override suspend fun addCookie(requestUrl: Url, cookie: Cookie) {
-            if (cookie.value.isEmpty()) {
-                CookiesStore.removeCookie(cookie.name)
-                return
-            }
-            CookiesStore.addCookie(cookie.name, cookie.value)
-        }
-
-        override suspend fun get(requestUrl: Url): List<Cookie> {
-            val cookies = CookiesStore.getAllCookiesMap()
-            return cookies.map { Cookie(it.key, it.value) }
-        }
-
-        override fun close() {}
-    }
+    private val cookiesStorage = SessionCookieStorage(CookiesStore, SessionCookiePersistence::persist)
 
     private val TrailingSlashPlugin = createClientPlugin("TrailingSlashPlugin") {
         onRequest { request, _ ->
@@ -72,13 +55,13 @@ object ApiFactory {
                 val elapsed = it.elapsedNow().inWholeMilliseconds
                 Logger.d("拦截器:\n请求 ${response.call.request.url} 耗时: ${elapsed}ms")
             }
-            // ponytail: 兜底同步 Set-Cookie，避免 HttpCookies 在 onResponse 异常时漏存
-            response.headers.getAll(HttpHeaders.SetCookie)?.let { CookiesStore.addCookies(it) }
+            // Set-Cookie 统一由 HttpCookies 处理，避免二次解析覆盖正确值。
         }
     }
 
     private val jsonHttpClient: HttpClient by lazy {
         HttpClient {
+            expectSuccess = true
             defaultRequest {
                 contentType(ContentType.Application.Json)
             }
@@ -99,6 +82,7 @@ object ApiFactory {
 
     private val loggerHttpClient: HttpClient by lazy {
         HttpClient {
+            expectSuccess = true
             defaultRequest {
                 contentType(ContentType.Application.Json)
             }
@@ -119,14 +103,16 @@ object ApiFactory {
                         Logger.d("KtorLog:\n$message")
                     }
                 }
-                // 打印级别：ALL (包含 Headers 和 Body)，对应你原来的 peekBody
-                level = LogLevel.ALL
+                sanitizeHeader { it == HttpHeaders.Cookie || it == HttpHeaders.SetCookie || it == HttpHeaders.Authorization }
+                // 登录响应正文也可能含令牌，不记录请求/响应正文。
+                level = LogLevel.HEADERS
             }
         }
     }
 
     private val uploadHttpClient: HttpClient by lazy {
         HttpClient {
+            expectSuccess = true
             install(ContentNegotiation) { json(JSONConverter) }
             install(TimeMonitorPlugin)
             install(HttpTimeout) {

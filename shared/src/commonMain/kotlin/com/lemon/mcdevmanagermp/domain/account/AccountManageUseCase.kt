@@ -3,6 +3,7 @@ package com.lemon.mcdevmanagermp.domain.account
 import com.lemon.mcdevmanagermp.data.common.JSONConverter
 import com.lemon.mcdevmanagermp.data.common.NetworkState
 import com.lemon.mcdevmanagermp.domain.user.UserRepository
+import kotlinx.serialization.encodeToString
 import kotlin.time.Clock
 
 /**
@@ -31,12 +32,14 @@ class AccountManageUseCase(
         val cookies: Map<String, String> = JSONConverter.decodeFromString(account.cookiesJson)
         cookieRepository.clearCookies()
         cookies.forEach { (k, v) -> cookieRepository.addCookie(k, v) }
+        cookieRepository.bindAccount(account.id, cookies)
 
         val result = userRepository.getUserInfo()
         return if (result is NetworkState.Success) {
             val headImg = result.data?.headImg
             accountRepository.upsertAccount(
                 account.copy(
+                    cookiesJson = JSONConverter.encodeToString(cookieRepository.getAllCookiesMap()),
                     lastLoginTime = Clock.System.now().toEpochMilliseconds(),
                     headImg = headImg
                 )

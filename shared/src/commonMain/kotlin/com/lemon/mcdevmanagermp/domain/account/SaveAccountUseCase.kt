@@ -17,13 +17,14 @@ class SaveAccountUseCase(
         password: String = "",
         rememberPassword: Boolean = false
     ) {
-        val cookies = cookieRepository.getAllCookiesMap()
-        val cookiesJson = JSONConverter.encodeToString(serializer<Map<String, String>>(), cookies)
         val now = Clock.System.now().toEpochMilliseconds()
         val userInfo = runCatching {
             val result = userRepository.getUserInfo()
             (result as? NetworkState.Success)?.data
         }.getOrNull()
+        // users/me 也可能刷新 Cookie，必须在验证返回后再取快照。
+        val cookies = cookieRepository.getAllCookiesMap()
+        val cookiesJson = JSONConverter.encodeToString(serializer<Map<String, String>>(), cookies)
         // 统一使用 nickname 作为账号标识，避免邮箱登录和 cookies 登录产生重复账号
         val accountName = userInfo?.nickname ?: email.ifBlank { "" }
         val headImg = userInfo?.headImg
@@ -58,6 +59,9 @@ class SaveAccountUseCase(
                     rememberPassword = rememberPassword
                 )
             )
+        }
+        accountRepository.getAccountByNickname(accountName)?.let {
+            cookieRepository.bindAccount(it.id, cookies)
         }
     }
 }

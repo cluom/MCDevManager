@@ -28,6 +28,7 @@ class LoginUseCase(
         password: String? = null,
         cookies: String? = null
     ) {
+        cookieRepository.clearCookies()
         when {
             email != null && password != null -> loginWithEmail(email, password)
             cookies != null -> loginByCookies(cookies)

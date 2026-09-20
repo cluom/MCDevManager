@@ -6,6 +6,8 @@ import com.lemon.mcdevmanagermp.data.consts.CookiesExpiredException
 import com.lemon.mcdevmanagermp.data.consts.LoginException
 import com.lemon.mcdevmanagermp.domain.user.UserRepository
 import com.lemon.mcdevmanagermp.utils.Logger
+import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.encodeToString
 import kotlin.time.Clock
 
 class AutoLoginUseCase(
@@ -20,26 +22,30 @@ class AutoLoginUseCase(
             if (lastAccount != null) {
                 val cookies: Map<String, String> =
                     JSONConverter.decodeFromString(lastAccount.cookiesJson)
+                cookieRepository.clearCookies()
                 cookies.forEach { (k, v) -> cookieRepository.addCookie(k, v) }
+                cookieRepository.bindAccount(lastAccount.id, cookies)
                 Logger.d("自动登录 登录账号: ${lastAccount.nickname}")
-                Logger.d("cookies: $cookies")
+                Logger.d("自动登录：恢复 ${cookies.size} 项 Cookie（不记录凭据内容）")
                 val result = userRepository.getUserInfo()
                 if (result is NetworkState.Success) {
                     val userInfo = result.data
                     val now = Clock.System.now().toEpochMilliseconds()
+                    val refreshedCookies = JSONConverter.encodeToString(cookieRepository.getAllCookiesMap())
                     // 更新最后登录时间，同时兼容旧版本将 email 字段更新为 nickname
                     val nickname = userInfo?.nickname
                     if (nickname != null && nickname != lastAccount.nickname) {
                         accountRepository.upsertAccount(
                             lastAccount.copy(
                                 nickname = nickname,
+                                cookiesJson = refreshedCookies,
                                 lastLoginTime = now,
                                 headImg = userInfo.headImg
                             )
                         )
                     } else {
                         accountRepository.upsertAccount(
-                            lastAccount.copy(lastLoginTime = now)
+                            lastAccount.copy(lastLoginTime = now, cookiesJson = refreshedCookies)
                         )
                     }
                     Logger.d("获取账号信息成功 登录账号: ${lastAccount.nickname}")
@@ -54,6 +60,7 @@ class AutoLoginUseCase(
             }
             false
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Logger.d("自动登录检查失败: ${e.message}")
             cookieRepository.clearCookies()
             false

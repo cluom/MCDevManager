@@ -183,6 +183,7 @@ class DatabaseBuilderJvmTest {
             override fun getAllCookiesMap(): Map<String, String> = mapOf("token" to "abc")
             override fun addCookie(key: String, value: String) {}
             override fun clearCookies() {}
+            override fun bindAccount(accountId: Long, persistedCookies: Map<String, String>) {}
         }
 
         val useCase = com.lemon.mcdevmanagermp.domain.account.SaveAccountUseCase(

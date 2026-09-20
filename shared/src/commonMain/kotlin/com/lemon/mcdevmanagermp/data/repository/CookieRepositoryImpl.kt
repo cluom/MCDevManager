@@ -16,4 +16,7 @@ class CookieRepositoryImpl : CookieRepository {
         AppContext.cookiesStore.addCookie(key, value)
 
     override fun clearCookies() = AppContext.cookiesStore.clearCookies()
+
+    override fun bindAccount(accountId: Long, persistedCookies: Map<String, String>) =
+        AppContext.cookiesStore.bindAccount(accountId, persistedCookies)
 }

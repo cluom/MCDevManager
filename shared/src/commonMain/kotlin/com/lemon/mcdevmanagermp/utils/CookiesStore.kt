@@ -1,40 +1,87 @@
 package com.lemon.mcdevmanagermp.utils
 
-object CookiesStore {
-    private val cookies = mutableMapOf<String, String>()
+import io.ktor.http.Cookie
+import io.ktor.http.parseServerSetCookieHeader
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlin.time.Clock
+
+/** 使用不可变快照，避免并发响应修改同一个 MutableMap。 */
+open class SessionCookieStore {
+    private data class State(
+        val cookies: Map<String, String> = emptyMap(),
+        val accountId: Long? = null,
+        val generation: Long = 0,
+        val persisted: Map<String, String> = emptyMap()
+    )
+
+    private val state = MutableStateFlow(State())
+    private val persistenceMutex = Mutex()
 
     fun addCookies(list: List<String>) {
-        list.forEach {
-            val cookie = it.split(";")[0]
-            val key = cookie.split("=")[0]
-            val value = cookie.split("=")[1]
-            cookies[key] = value
+        list.forEach { header ->
+            val pair = header.substringBefore(';')
+            if (pair.substringBefore('=').isBlank() || pair.indexOf('=') < 1) return@forEach
+            // 使用 HTTP 库解析，只按第一个等号分隔，并处理服务端删除指令。
+            val cookie = runCatching { parseServerSetCookieHeader(header) }.getOrNull()
+                ?: return@forEach
+            addCookie(cookie)
         }
     }
 
-    fun removeCookie(key: String){
-        cookies.remove(key)
+    fun addCookie(cookie: Cookie) {
+        val expired = cookie.maxAge?.let { it <= 0 }
+            ?: (cookie.expires?.timestamp?.let { it <= Clock.System.now().toEpochMilliseconds() } ?: false)
+        if (cookie.value.isEmpty() || expired) removeCookie(cookie.name)
+        else addCookie(cookie.name, cookie.value)
+    }
+
+    fun removeCookie(key: String) {
+        state.update { it.copy(cookies = it.cookies - key) }
     }
 
     fun addCookie(key: String, value: String) {
-        cookies[key] = value
+        if (key.isBlank()) return
+        if (value.isEmpty()) removeCookie(key)
+        else state.update { it.copy(cookies = it.cookies + (key to value)) }
     }
 
     fun getCookie(key: String): String? {
-        return cookies[key]
+        return state.value.cookies[key]
     }
 
     fun getAllCookiesString(): String {
-        if (cookies.isEmpty()) return ""
-        return cookies.map { "${it.key}=${it.value}" }.joinToString("; ")
+        return state.value.cookies.entries.joinToString("; ") { "${it.key}=${it.value}" }
     }
 
     fun getAllCookiesMap(): Map<String, String>{
-        if (cookies.isEmpty()) return HashMap()
-        return cookies.toMap()
+        return state.value.cookies.toMap()
     }
 
     fun clearCookies() {
-        cookies.clear()
+        state.update { State(generation = it.generation + 1) }
+    }
+
+    /** 绑定已保存账号，禁止用“最后使用账号”猜测新 Cookie 属于谁。 */
+    fun bindAccount(accountId: Long, persistedCookies: Map<String, String>) {
+        state.update { it.copy(accountId = accountId, persisted = persistedCookies.toMap()) }
+    }
+
+    suspend fun persistChanges(save: suspend (Long, Map<String, String>) -> Unit) {
+        persistenceMutex.withLock {
+            val snapshot = state.value
+            val accountId = snapshot.accountId ?: return
+            if (snapshot.cookies == snapshot.persisted) return
+            save(accountId, snapshot.cookies)
+            state.update {
+                if (it.generation == snapshot.generation && it.accountId == accountId) {
+                    it.copy(persisted = snapshot.cookies)
+                } else it
+            }
+        }
     }
 }
+
+object CookiesStore : SessionCookieStore()
