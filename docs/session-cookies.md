@@ -51,3 +51,23 @@
 本轮真实账号只读对照：相同未读消息 GET 接口，数据库 Cookie 原值拼接与仅在内存消除 S_INFO 重复编码的版本均返回 HTTP 200、业务 status=ok；未写回数据库。此对照绕开了客户端 Ktor 的实际发送编码，不能据此证明重复编码是此前 502 的唯一或直接原因。最终发送链路需通过新增日志观测。
 
 本机测试不需要真实 Cookie，覆盖请求编号与实际发送字节数、200/502、响应体不完整、深层编码、日志注入/脱敏和日志输出失败不改变请求结果。
+
+## URL 重复编码修复（2026-09-21）
+
+只读核对运行中的 JVM：沿 `CookiesStore.INSTANCE -> state -> State.cookies` 定位当前快照，并确认 `ApiFactory.cookiesStorage.store` 指向同一对象。两次稳定读取均显示 S_INFO 长度 3248，解除 268 层 URL 编码后为 32 字符；5 项 Cookie 与数据库逐项相同。未注入代理、暂停进程、修改目标内存、生成堆转储或重放网络请求。
+
+根因是 `SessionCookieStorage.get()` 从字符串重建 `Cookie` 时使用默认 `URI_ENCODING`，把 HTTP 头中的原始值再次 URL 编码。Ktor 捕获请求头时又把该值按 RAW 写入存储；服务端 Set-Cookie 默认也是 RAW。这会在回存链路中保留多余转义，而不仅是影响一次请求。
+
+修复约定：
+
+- 存储字符串统一为 HTTP Cookie 的线格式（可直接发送的原始值），`get()` 明确使用 `CookieEncoding.RAW`。
+- 收到带显式编码枚举的 `Cookie` 时，按该枚举转换成线格式一次，再存入 Map；普通 RAW 值保持不变。
+- 不递归解码普通 Cookie，也不猜测百分号内容是否合法，避免破坏服务端有意编码的令牌。
+- 本版本不自动修复历史数据库。用户已选择仅替换程序并重新登录；数据库、其他账号资料和原日志均保留。
+- 新登录后若仍报 502，使用 `SESSION_DIAG` 对照实际 wire/store 摘要；不宣称本修复已证实解决所有 502。
+
+回归测试包括 300 次请求头捕获/响应回存循环、合法百分号/加号/斜线/等号保持、显式 URI/Base64 编码转换、历史污染值不被擅自改写，以及本机 HTTP 服务的连续收发与不变快照零持久化。
+
+验证结果：`:shared:jvmTest` 共 91 项测试，0 失败、0 错误；`:desktopApp:packagePortable` 构建成功。未运行 Android/iOS 测试，也未用真实账号联网验收新版本。
+
+参考 [Ktor 3.5.0 HttpCookies](https://github.com/ktorio/ktor/blob/3.5.0/ktor-client/ktor-client-core/common/src/io/ktor/client/plugins/cookies/HttpCookies.kt) 和 [Cookie 编解码实现](https://github.com/ktorio/ktor/blob/3.5.0/ktor-http/common/src/io/ktor/http/Cookie.kt)。

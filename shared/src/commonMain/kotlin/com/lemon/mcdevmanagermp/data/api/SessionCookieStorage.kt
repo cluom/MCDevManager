@@ -5,6 +5,7 @@ import com.lemon.mcdevmanagermp.utils.Logger
 import com.lemon.mcdevmanagermp.utils.SessionDiagnostics
 import io.ktor.client.plugins.cookies.CookiesStorage
 import io.ktor.http.Cookie
+import io.ktor.http.CookieEncoding
 import io.ktor.http.Url
 
 /** 会话仅用于已知的网易业务主机，不随 GitHub/任意下载地址发送。 */
@@ -31,7 +32,11 @@ internal class SessionCookieStorage(
     }
 
     override suspend fun get(requestUrl: Url): List<Cookie> =
-        if (isTrusted(requestUrl)) store.getAllCookiesMap().map { Cookie(it.key, it.value) }
+        // Map 保存的是 HTTP 头中的原始值，不是待 URL 编码的逻辑值。
+        // 默认 URI_ENCODING 会把已有的 % 再次转义；回存后每轮继续膨胀。
+        if (isTrusted(requestUrl)) store.getAllCookiesMap().map {
+            Cookie(it.key, it.value, encoding = CookieEncoding.RAW)
+        }
         else emptyList()
 
     override fun close() = Unit

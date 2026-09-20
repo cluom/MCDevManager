@@ -1,6 +1,7 @@
 package com.lemon.mcdevmanagermp.utils
 
 import io.ktor.http.Cookie
+import io.ktor.http.encodeCookieValue
 import io.ktor.http.parseServerSetCookieHeader
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
@@ -8,7 +9,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.time.Clock
 
-/** 使用不可变快照，避免并发响应修改同一个 MutableMap。 */
+/** 使用不可变快照；字符串值统一保存为可直接发送的 HTTP Cookie 原始值。 */
 open class SessionCookieStore {
     private data class State(
         val cookies: Map<String, String> = emptyMap(),
@@ -35,7 +36,9 @@ open class SessionCookieStore {
         val expired = cookie.maxAge?.let { it <= 0 }
             ?: (cookie.expires?.timestamp?.let { it <= Clock.System.now().toEpochMilliseconds() } ?: false)
         if (cookie.value.isEmpty() || expired) removeCookie(cookie.name)
-        else addCookie(cookie.name, cookie.value)
+        // 通常 Set-Cookie/请求头捕获都是 RAW；显式编码的 Cookie 先转成线格式，
+        // 否则丢掉 encoding 元数据后会改变它的含义。已有百分号转义不做递归解码。
+        else addCookie(cookie.name, encodeCookieValue(cookie.value, cookie.encoding))
     }
 
     fun removeCookie(key: String) {
