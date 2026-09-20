@@ -27,6 +27,8 @@ import com.lemon.mcdevmanagermp.ui.base.BaseViewModel
 import com.lemon.mcdevmanagermp.utils.Logger
 import com.lemon.mcdevmanagermp.utils.ProfitData
 import kotlinx.coroutines.async
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
@@ -129,6 +131,7 @@ class MainViewModel : BaseViewModel<MainState, MainAction, MainEffect>(MainState
     )
     private val accountRepository = AccountRepositoryImpl.INSTANCE
     private val mailboxRepository = MailboxRepositoryImpl.INSTANCE
+    private var mailboxUnreadJob: Job? = null
 
     init {
         val today = todayString()
@@ -184,8 +187,7 @@ class MainViewModel : BaseViewModel<MainState, MainAction, MainEffect>(MainState
         }
 
         // 消息未读数：先从静态缓存恢复（避免角标闪烁），随后无条件刷新以同步已读状态。
-        // MainViewModel 每次从子页面返回首页时都会重建（companion 缓存即为此设计），
-        // 因此用户在邮箱中读完邮件返回后，此处会重新拉取 count，及时清理已读提示。
+        // 返回首页由 RefreshMailbox 刷新，ViewModel 由导航条目管理，不再反复创建轮询。
         setState { copy(mailboxUnreadCount = cachedMailboxUnreadCount) }
         loadMailboxUnread()
 
@@ -195,9 +197,15 @@ class MainViewModel : BaseViewModel<MainState, MainAction, MainEffect>(MainState
 
     private fun startMailboxUnreadPolling() {
         viewModelScope.launch {
-            while (true) {
-                delay(UNREAD_POLLING_INTERVAL_MS)
-                loadMailboxUnread()
+            Logger.d("首页未读消息轮询启动，间隔 ${UNREAD_POLLING_INTERVAL_MS}ms")
+            try {
+                while (true) {
+                    delay(UNREAD_POLLING_INTERVAL_MS)
+                    // 等待当前请求完成，不在超时或手动刷新时堆积并发请求。
+                    loadMailboxUnread().join()
+                }
+            } finally {
+                Logger.d("首页未读消息轮询已停止")
             }
         }
     }
@@ -205,6 +213,7 @@ class MainViewModel : BaseViewModel<MainState, MainAction, MainEffect>(MainState
     override fun dispatch(action: MainAction) {
         when (action) {
             is MainAction.SelectTab -> setState { copy(selectedTab = action.tab) }
+            MainAction.RefreshMailbox -> { loadMailboxUnread() }
             MainAction.LoadData -> {
                 invalidateAllCache()
                 loadDashboard()
@@ -285,6 +294,7 @@ class MainViewModel : BaseViewModel<MainState, MainAction, MainEffect>(MainState
                     }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 Logger.e("仪表盘加载异常", e)
                 setState { copy(isRefreshing = false) }
                 sendEffect(MainEffect.ShowToast("数据加载失败"))
@@ -385,8 +395,9 @@ class MainViewModel : BaseViewModel<MainState, MainAction, MainEffect>(MainState
             ?: AppContext.userInfo?.nickname
             ?: ""
 
-    private fun loadMailboxUnread() {
-        viewModelScope.launch {
+    private fun loadMailboxUnread(): Job {
+        mailboxUnreadJob?.takeIf { it.isActive }?.let { return it }
+        return viewModelScope.launch {
             when (val r = mailboxRepository.getUnReadCount()) {
                 is NetworkState.Success -> {
                     cachedMailboxUnreadCount = r.data?.count ?: 0
@@ -395,9 +406,10 @@ class MainViewModel : BaseViewModel<MainState, MainAction, MainEffect>(MainState
 
                 is NetworkState.Error -> {
                     // 静默处理：session 过期由 loadDashboard 统一捕获并跳转登录
+                    Logger.d("未读消息刷新失败，保留现有会话：${r.msg}")
                 }
             }
-        }
+        }.also { mailboxUnreadJob = it }
     }
 
     private fun loadRankList() {

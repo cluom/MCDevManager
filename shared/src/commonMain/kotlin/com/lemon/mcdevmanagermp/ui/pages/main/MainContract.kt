@@ -44,6 +44,7 @@ sealed interface MainAction : IUiAction {
     data class SelectTab(val tab: MainTab) : MainAction
     data object LoadData : MainAction
     data object RefreshData : MainAction
+    data object RefreshMailbox : MainAction
     data object ToggleDrawer : MainAction
     data class GetRankData(
         val category: RankCategoryTypeEnum,

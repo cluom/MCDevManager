@@ -7,7 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.Modifier
 import com.lemon.mcdevmanagermp.platform.BackHandler
 import com.lemon.mcdevmanagermp.platform.openUrl
@@ -34,15 +34,17 @@ fun MainPage(
     onNavigateToAddAccount: () -> Unit = {},
     onNavigateToSubPage: (Route) -> Unit = {}
 ) {
-    val viewModel = remember { MainViewModel() }
+    // 由导航条目持有：返回首页复用，退出登录时自动清理 viewModelScope。
+    val viewModel = viewModel { MainViewModel() }
     val state by viewModel.state.collectAsState()
     // 更新检查
-    val updateViewModel = remember { UpdateViewModel() }
+    val updateViewModel = viewModel { UpdateViewModel() }
     val updateState by updateViewModel.state.collectAsState()
     val notificationPermissionState = rememberPermissionState(Permission.Notification)
 
     LaunchedEffect(Unit) {
         updateViewModel.dispatch(UpdateAction.CheckUpdate(false))
+        viewModel.dispatch(MainAction.RefreshMailbox)
     }
 
     updateViewModel.effect.collectUiEffect { effect ->
