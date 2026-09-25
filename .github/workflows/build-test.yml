@@ -156,6 +156,9 @@ jobs:
         with:
           xcode-version: latest
 
+      - name: Sync iOS bundle version
+        run: python3 iosApp/scripts/version.py sync --build-number "$GITHUB_RUN_NUMBER"
+
       - name: Switch Gradle mirror to official source
         run: sed -i '' 's|distributionUrl=.*|distributionUrl=https://services.gradle.org/distributions/gradle-9.5.0-bin.zip|' gradle/wrapper/gradle-wrapper.properties
 
@@ -183,6 +186,7 @@ jobs:
           mkdir -p Payload
           cp -r "$APP_PATH" Payload/
           zip -qr MCDevManager-unsigned.ipa Payload
+          python3 iosApp/scripts/version.py verify MCDevManager-unsigned.ipa
           rm -rf Payload
 
       - name: Upload IPA

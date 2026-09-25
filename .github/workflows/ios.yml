@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: '版本号 (可选，留空则用 ci-<run_number>)'
+        description: '产物文件名标记（可选；包内版本固定同步项目版本）'
         required: false
         default: ''
 
@@ -39,6 +39,9 @@ jobs:
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest
+
+      - name: Sync iOS bundle version
+        run: python3 iosApp/scripts/version.py sync --build-number "$GITHUB_RUN_NUMBER"
 
       - name: Determine version
         id: vars
@@ -76,6 +79,7 @@ jobs:
           mkdir -p Payload
           cp -r "$APP_PATH" Payload/
           zip -qr "MCDevManagerMP-V${{ steps.vars.outputs.version }}-ios-arm64.ipa" Payload
+          python3 iosApp/scripts/version.py verify "MCDevManagerMP-V${{ steps.vars.outputs.version }}-ios-arm64.ipa"
           rm -rf Payload
 
       - name: Upload IPA

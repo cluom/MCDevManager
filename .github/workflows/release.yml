@@ -239,6 +239,9 @@ jobs:
         with:
           xcode-version: latest
 
+      - name: Sync iOS bundle version
+        run: python3 iosApp/scripts/version.py sync --build-number "$GITHUB_RUN_NUMBER"
+
       - name: Determine version
         id: vars
         run: |
@@ -276,6 +279,7 @@ jobs:
           mkdir -p Payload
           cp -r "$APP_PATH" Payload/
           zip -qr "MCDevManagerMP-V${{ steps.vars.outputs.version }}-ios-arm64.ipa" Payload
+          python3 iosApp/scripts/version.py verify "MCDevManagerMP-V${{ steps.vars.outputs.version }}-ios-arm64.ipa"
           rm -rf Payload
 
       - name: Upload IPA
