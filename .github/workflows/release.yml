@@ -242,6 +242,9 @@ jobs:
       - name: Sync iOS bundle version
         run: python3 iosApp/scripts/version.py sync --build-number "$GITHUB_RUN_NUMBER"
 
+      - name: Test income widget core
+        run: swift test --package-path iosApp
+
       - name: Determine version
         id: vars
         run: |
@@ -276,6 +279,7 @@ jobs:
       - name: Package & rename IPA
         run: |
           APP_PATH=$(find build/Build/Products/Release-iphoneos -name '*.app' | head -1)
+          bash iosApp/scripts/prepare-widget.sh "$APP_PATH"
           mkdir -p Payload
           cp -r "$APP_PATH" Payload/
           zip -qr "MCDevManagerMP-V${{ steps.vars.outputs.version }}-ios-arm64.ipa" Payload

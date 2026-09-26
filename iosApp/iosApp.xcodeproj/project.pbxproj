@@ -6,11 +6,37 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		B1000000000000000000000C /* IncomeWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = B10000000000000000000001 /* IncomeWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		B1000000000000000000000F = {isa = PBXContainerItemProxy; containerPortal = 641B615C2619AC330986A583 /* Project object */; proxyType = 1; remoteGlobalIDString = B10000000000000000000005; remoteInfo = IncomeWidget; };
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		B1000000000000000000000D /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (B1000000000000000000000C /* IncomeWidget.appex in Embed App Extensions */, );
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		B10000000000000000000001 /* IncomeWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = IncomeWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		CF2AE77ED12B949616939EB7 /* MCDevManagerMPR.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MCDevManagerMPR.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		B10000000000000000000004 /* Widget Info.plist */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (Info.plist, );
+			target = B10000000000000000000005 /* IncomeWidget */;
+		};
 		949F9C6896483FF98FE6648E /* Exceptions for "iosApp" folder in "iosApp" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -21,6 +47,17 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		B10000000000000000000002 /* IncomeWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (B10000000000000000000004, );
+			path = IncomeWidget;
+			sourceTree = "<group>";
+		};
+		B10000000000000000000003 /* WidgetShared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = WidgetShared;
+			sourceTree = "<group>";
+		};
 		953E79FC670C940C9DB87EF8 /* iosApp */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -37,6 +74,7 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		B10000000000000000000007 /* Widget Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		F1AE5E4588D407B83066B834 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -52,6 +90,8 @@
 			children = (
 				857AA38941286234D41B8483 /* Configuration */,
 				953E79FC670C940C9DB87EF8 /* iosApp */,
+				B10000000000000000000002 /* IncomeWidget */,
+				B10000000000000000000003 /* WidgetShared */,
 				8E4B7DC5466241A75FE8986D /* Products */,
 			);
 			sourceTree = "<group>";
@@ -60,6 +100,7 @@
 			isa = PBXGroup;
 			children = (
 				CF2AE77ED12B949616939EB7 /* MCDevManagerMPR.app */,
+				B10000000000000000000001 /* IncomeWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -67,6 +108,19 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		B10000000000000000000005 /* IncomeWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B10000000000000000000009;
+			buildPhases = (B10000000000000000000006, B10000000000000000000007, B10000000000000000000008, );
+			buildRules = ();
+			dependencies = ();
+			fileSystemSynchronizedGroups = (B10000000000000000000002, B10000000000000000000003, );
+			name = IncomeWidget;
+			packageProductDependencies = ();
+			productName = IncomeWidget;
+			productReference = B10000000000000000000001 /* IncomeWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		1CAA40EDDA740BC2C8B0705E /* iosApp */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 4D94D9D3B1D00510B4A83EA4 /* Build configuration list for PBXNativeTarget "iosApp" */;
@@ -75,13 +129,16 @@
 				EF1BD667275998F1E3871876 /* Sources */,
 				F1AE5E4588D407B83066B834 /* Frameworks */,
 				9613AC704AD923A405C6B91D /* Resources */,
+				B1000000000000000000000D /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				B1000000000000000000000E /* Widget target dependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				953E79FC670C940C9DB87EF8 /* iosApp */,
+				B10000000000000000000003 /* WidgetShared */,
 			);
 			name = iosApp;
 			packageProductDependencies = (
@@ -102,6 +159,11 @@
 				TargetAttributes = {
 					1CAA40EDDA740BC2C8B0705E = {
 						CreatedOnToolsVersion = 16.2;
+						SystemCapabilities = {com.apple.ApplicationGroups.iOS = {enabled = 1; }; };
+					};
+					B10000000000000000000005 = {
+						CreatedOnToolsVersion = 16.2;
+						SystemCapabilities = {com.apple.ApplicationGroups.iOS = {enabled = 1; }; };
 					};
 				};
 			};
@@ -120,11 +182,13 @@
 			projectRoot = "";
 			targets = (
 				1CAA40EDDA740BC2C8B0705E /* iosApp */,
+				B10000000000000000000005 /* IncomeWidget */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		B10000000000000000000008 /* Widget Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		9613AC704AD923A405C6B91D /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -157,6 +221,7 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		B10000000000000000000006 /* Widget Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		EF1BD667275998F1E3871876 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -166,7 +231,47 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		B1000000000000000000000E /* Widget target dependency */ = {isa = PBXTargetDependency; target = B10000000000000000000005; targetProxy = B1000000000000000000000F; };
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		B1000000000000000000000A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Configuration/IncomeWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "${TEAM_ID}";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = IncomeWidget/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks", );
+				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).IncomeWidget";
+				PRODUCT_NAME = IncomeWidget;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		B1000000000000000000000B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Configuration/IncomeWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "${TEAM_ID}";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = IncomeWidget/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks", );
+				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).IncomeWidget";
+				PRODUCT_NAME = IncomeWidget;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		D411B9F436FECD1B21B3EFEE /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReferenceAnchor = 857AA38941286234D41B8483 /* Configuration */;
@@ -297,6 +402,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_ENTITLEMENTS = Configuration/IncomeWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_ASSET_PATHS = "\"iosApp/Preview Content\"";
 				DEVELOPMENT_TEAM = "${TEAM_ID}";
@@ -330,6 +436,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_ENTITLEMENTS = Configuration/IncomeWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_ASSET_PATHS = "\"iosApp/Preview Content\"";
 				DEVELOPMENT_TEAM = "${TEAM_ID}";
@@ -359,6 +466,12 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		B10000000000000000000009 /* Widget build configurations */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (B1000000000000000000000A, B1000000000000000000000B, );
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		FEB6B72589A35CBAE7288D0B /* Build configuration list for PBXProject "iosApp" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
