@@ -1,4 +1,5 @@
 name: iOS Build
+run-name: iOS ${{ inputs.configuration || 'Release' }} · ${{ inputs.version || 'CI' }}
 
 # 独立的 iOS 构建入口，仅手动触发。
 # 用于反复调试 / 按需构建未签名 IPA，无需等待其他平台。
@@ -10,12 +11,20 @@ on:
         description: '产物文件名标记（可选；包内版本固定同步项目版本）'
         required: false
         default: ''
+      configuration:
+        description: 'Debug 用于快速侧载诊断；Release 用于优化后的正式包'
+        type: choice
+        options:
+          - Debug
+          - Release
+        default: Debug
 
 permissions:
   contents: read
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  BUILD_CONFIGURATION: ${{ inputs.configuration || 'Release' }}
 
 jobs:
   # ============================================================
@@ -32,6 +41,9 @@ jobs:
           java-version: '21'
 
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          # 手动开发分支也写缓存；默认配置只允许默认分支写，之前每轮无法热身。
+          cache-read-only: false
 
       # CMP 1.11.x 的 Skiko 引用了 iOS 26 的 UIUtilities 框架，需要 Xcode 26+ SDK
       # 详见: https://youtrack.jetbrains.com/issue/CMP-10179
@@ -39,6 +51,25 @@ jobs:
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest
+
+      - name: Identify native toolchain
+        id: toolchain
+        run: |
+          case "$BUILD_CONFIGURATION" in Debug|Release) ;; *) exit 1 ;; esac
+          KEY=$({ xcodebuild -version; xcrun --sdk iphoneos --show-sdk-version; xcrun swift --version; } | shasum -a 256 | cut -c 1-16)
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Kotlin Native compiler and libraries
+        id: native-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('gradle/libs.versions.toml') }}-${{ github.sha }}
+          restore-keys: |
+            konan-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('gradle/libs.versions.toml') }}-
+
+      - name: Validate widget project
+        run: node iosApp/scripts/check-widget-project.mjs
 
       - name: Sync iOS bundle version
         run: python3 iosApp/scripts/version.py sync --build-number "$GITHUB_RUN_NUMBER"
@@ -48,11 +79,15 @@ jobs:
 
       - name: Determine version
         id: vars
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
         run: |
-          V="${{ inputs.version }}"
+          V="$REQUESTED_VERSION"
           if [ -z "$V" ]; then
             V="ci-${{ github.run_number }}"
           fi
+          # 用于文件名，不允许路径穿越、换行或 shell 元字符。
+          [[ "$V" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]
           echo "version=$V" >> "$GITHUB_OUTPUT"
 
       - name: Switch Gradle mirror to official source
@@ -64,30 +99,53 @@ jobs:
       # Xcode 的 Compile Kotlin Framework 阶段会调用
       # :shared:embedAndSignAppleFrameworkForXcode，无需提前重复启动 Gradle。
       - name: Build device framework and unsigned app
+        id: build
         run: |
+          START=$SECONDS
           xcodebuild -project iosApp/iosApp.xcodeproj \
             -scheme iosApp \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
-            -configuration Release \
+            -configuration "$BUILD_CONFIGURATION" \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
+            ENABLE_DEBUG_DYLIB=NO \
             COMPILER_INDEX_STORE_ENABLE=NO \
             DEBUG_INFORMATION_FORMAT=dwarf \
+            -showBuildTimingSummary \
             -quiet
+          echo "seconds=$((SECONDS - START))" >> "$GITHUB_OUTPUT"
 
       - name: Package & rename IPA
+        env:
+          ARTIFACT_VERSION: ${{ steps.vars.outputs.version }}
         run: |
-          APP_PATH=$(find build/Build/Products/Release-iphoneos -name '*.app' | head -1)
+          APP_PATH="build/Build/Products/$BUILD_CONFIGURATION-iphoneos/MCDevManagerMPR.app"
           bash iosApp/scripts/prepare-widget.sh "$APP_PATH"
           mkdir -p Payload
           cp -r "$APP_PATH" Payload/
-          zip -qr "MCDevManagerMP-V${{ steps.vars.outputs.version }}-ios-arm64.ipa" Payload
-          python3 iosApp/scripts/version.py verify "MCDevManagerMP-V${{ steps.vars.outputs.version }}-ios-arm64.ipa"
+          zip -q -1 -r "MCDevManagerMP-V$ARTIFACT_VERSION-$BUILD_CONFIGURATION-ios-arm64.ipa" Payload
+          python3 iosApp/scripts/version.py verify "MCDevManagerMP-V$ARTIFACT_VERSION-$BUILD_CONFIGURATION-ios-arm64.ipa"
           rm -rf Payload
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: ios-ipa
-          path: MCDevManagerMP-V${{ steps.vars.outputs.version }}-ios-arm64.ipa
+          path: MCDevManagerMP-V${{ steps.vars.outputs.version }}-${{ env.BUILD_CONFIGURATION }}-ios-arm64.ipa
+          compression-level: 0
+
+      - name: Build timing summary
+        if: always()
+        env:
+          BUILD_SECONDS: ${{ steps.build.outputs.seconds }}
+          NATIVE_CACHE_HIT: ${{ steps.native-cache.outputs.cache-hit }}
+        run: |
+          {
+            echo '## iOS build diagnostics'
+            echo "- Configuration: $BUILD_CONFIGURATION"
+            echo "- Compile seconds: ${BUILD_SECONDS:-not completed}"
+            echo "- Native cache exact hit: ${NATIVE_CACHE_HIT:-false} (prefix restores are shown in cache step)"
+            echo '- Baseline: iOS Build #3 Release, compile 1502 seconds, total 26m19s.'
+            echo '- Debug trades release optimization for faster diagnostic builds; Release remains available.'
+          } >> "$GITHUB_STEP_SUMMARY"

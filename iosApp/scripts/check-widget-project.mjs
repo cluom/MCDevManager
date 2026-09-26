@@ -99,4 +99,11 @@ for (const file of ['ios.yml', 'build-test.yml', 'release.yml']) {
     assert.ok(workflow.includes('swift test --package-path iosApp'));
     assert.ok(workflow.includes('bash iosApp/scripts/prepare-widget.sh "$APP_PATH"'));
 }
+const iosWorkflow = fs.readFileSync(path.join(ios, '..', '.github/workflows/ios.yml'), 'utf8');
+assert.ok(iosWorkflow.includes('cache-read-only: false'), 'manual development branches must save Gradle caches');
+assert.ok(iosWorkflow.includes('path: ~/.konan'), 'native compiler caches must survive hosted runners');
+assert.ok(iosWorkflow.includes('runner.arch') && iosWorkflow.includes('steps.toolchain.outputs.key'), 'native caches must be separated by architecture and SDK');
+assert.ok(iosWorkflow.includes('-configuration "$BUILD_CONFIGURATION"'));
+assert.ok(iosWorkflow.includes('build/Build/Products/$BUILD_CONFIGURATION-iphoneos/MCDevManagerMPR.app'));
+assert.ok(iosWorkflow.includes('-showBuildTimingSummary'));
 console.log('Xcode project syntax, ASCII registration names, Chinese localization, widget embedding, shared sources, signing and all 3 CI entry points: OK');

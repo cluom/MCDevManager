@@ -46,6 +46,14 @@
 - `reserveSkipped + cooldown` 表示真正被五分钟限频；`requestFailed + timeout` 表示网络超时；`completionDropped + revisionMismatch` 表示 Cookie 更新后旧请求结果被丢弃；`exportState` 能确认共享数据是否可读。
 - 无数据不再一律显示“五分钟内不重复请求”：分别显示尚未取得数据、正在刷新、未完成、结果丢弃或具体错误。冷却结束的显示更新不发请求；五分钟限频、20 秒总超时及会话版本保护规则均未改变。
 
+### 云端快速诊断构建
+
+- 独立 `iOS Build` 工作流新增 `configuration` 选项：默认 Debug 用于频繁真机诊断，可手动选择 Release；正式 Release 工作流仍保持优化构建。
+- Debug 减少 Kotlin/Native 的全程序优化耗时，包体和运行效率可能不及 Release。两者都保留小组件、签名检查和 Swift 测试，不以跳过验证换速度。
+- 手动开发分支显式开启 Gradle 缓存写入；额外缓存 `~/.konan`，以运行机架构、Xcode/Swift/SDK 和 Kotlin 依赖版本隔离，不复用来路不明的 IPA 或跳过源码编译检查。
+- IPA 已压缩，上传时关闭外层重复压缩。每轮记录编译耗时与原生缓存命中情况；首次运行仍需生成缓存，第二次同工具链构建才能衡量热缓存效果。
+- 优化前基线：Build #3 总耗时 26 分 19 秒，编译 1502 秒。优化后的实际耗时以构建结果为准，不承诺固定分钟数。
+
 Windows 可运行：
 
 ```powershell
