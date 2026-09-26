@@ -4,6 +4,8 @@ import io.ktor.http.Cookie
 import io.ktor.http.encodeCookieValue
 import io.ktor.http.parseServerSetCookieHeader
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -20,6 +22,11 @@ open class SessionCookieStore {
 
     private val state = MutableStateFlow(State())
     private val persistenceMutex = Mutex()
+
+    // 只供平台桥接观察当前绑定会话；不暴露密码，也不改变 Cookie 的编码或持久化路径。
+    internal fun widgetSessions() = state.map {
+        WidgetSessionSnapshot(it.accountId, it.generation, it.cookies)
+    }.distinctUntilChanged()
 
     fun addCookies(list: List<String>) {
         list.forEach { header ->
@@ -90,3 +97,9 @@ open class SessionCookieStore {
 }
 
 object CookiesStore : SessionCookieStore()
+
+internal data class WidgetSessionSnapshot(
+    val accountId: Long?,
+    val generation: Long,
+    val cookies: Map<String, String>
+)
