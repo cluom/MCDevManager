@@ -88,6 +88,8 @@ Swift 测试覆盖：北京时间边界、成功/失败/重启/重登后立即�
 
 本次开发环境为 Windows。2026-09-26 的 [iOS Build #3](https://github.com/cluom/MCDevManager/actions/runs/36253733327) 已通过 Swift 测试、Xcode 编译、扩展及名称校验；用户随后确认安装成功，但小组件一直显示等待刷新。2026-09-27 补充诊断与状态文案：17 项 JVM 日志导出/会话/Cookie 测试和 Xcode 工程静态检查通过；[iOS Build #4](https://github.com/cluom/MCDevManager/actions/runs/36258688644) 已通过新增 Swift 测试、Xcode 编译（包括主程序日志桥接）、扩展/名称/分组权限和版本校验，诊断 IPA 已上传。包内版本为 1.2.5，构建号为 4。仍需用户保留扩展重签安装后复现并导出日志；本次不据主程序日志推断已确认小组件故障根因。
 
+2026-09-27 后续验证：[iOS Build #5](https://github.com/cluom/MCDevManager/actions/runs/36262860253) 的实时接口修复 Release 包构建成功，产物约 33.7 MiB，总耗时 16 分 52 秒。其后用户要求改为纯手动刷新并取消冷却，已在 `23a9436` 实现：点击乐观旋转一次、仅合并进行中的请求、完成后立即可重试、旧请求 attempt ID 保护。[iOS Build #6](https://github.com/cluom/MCDevManager/actions/runs/36265860766) 已通过工程静态检查和 28 项 Swift 测试，当前正在构建 Release IPA；尚未完成真机动画与交互验收。#5 不包含手动刷新改动，不应拿它验收新版行为。
+
 参考：
 
 - [Apple：WidgetKit 刷新调度](https://developer.apple.com/documentation/widgetkit/keeping-a-widget-up-to-date)
