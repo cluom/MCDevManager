@@ -110,4 +110,18 @@ assert.ok(iosWorkflow.includes('default: Release'), 'regular sideload packages m
 assert.ok(iosWorkflow.includes('zip -q -6 -r'), 'IPA must retain normal compression');
 const incomeAPI = fs.readFileSync(path.join(ios, 'WidgetShared/IncomeAPI.swift'), 'utf8');
 assert.ok(incomeAPI.includes('get("items/categories/pe/",'), 'resource list must use its canonical trailing slash URL');
+const widgetView = fs.readFileSync(path.join(ios, 'IncomeWidget/IncomeWidget.swift'), 'utf8');
+const provider = widgetView.slice(widgetView.indexOf('struct IncomeProvider:'), widgetView.indexOf('struct RefreshIncomeIntent:'));
+assert.ok(provider.includes('WidgetRefreshService.cached(trigger: .timeline)'));
+assert.ok(!/refreshManually|IncomeAPI|\bTask\s*\{/.test(provider), 'system timeline must only read cache');
+const intent = widgetView.slice(widgetView.indexOf('struct RefreshIncomeIntent:'), widgetView.indexOf('private struct RefreshIncomeToggleStyle:'));
+assert.equal((widgetView.match(/WidgetRefreshService\.refreshManually/g) || []).length, 1);
+assert.ok(intent.includes('WidgetRefreshService.refreshManually'));
+assert.ok(intent.includes('WidgetCenter.shared.reloadTimelines'));
+assert.ok(widgetView.includes('Toggle(isOn: entry.state.isRefreshing(at: entry.date), intent: RefreshIncomeIntent())'),
+    'refresh must use optimistic interaction feedback before network completion');
+assert.ok(widgetView.includes('.rotationEffect(.degrees(configuration.isOn ? 360 : 0))'));
+assert.ok(widgetView.includes('.linear(duration: 0.8)'));
+assert.ok(!widgetView.includes('repeatForever'), 'widget animation must be finite');
 console.log('Xcode project syntax, ASCII registration names, Chinese localization, widget embedding, shared sources, signing and all 3 CI entry points: OK');
+console.log('Cache-only timeline, manual-only network entry and optimistic one-turn refresh animation: OK');

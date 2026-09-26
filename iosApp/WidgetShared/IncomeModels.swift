@@ -89,26 +89,39 @@ struct WidgetState: Codable {
         return Int(min(86400, max(0, ceil(IncomeWidgetConstants.minimumRefreshInterval - now.timeIntervalSince(last)))))
     }
 
+    func canRefreshManually(at now: Date) -> Bool {
+        guard let accountID else { return false }
+        return canRefresh(accountID: accountID, now: now)
+    }
+
+    func isRefreshing(at now: Date) -> Bool {
+        guard refreshOutcome == .inFlight, let accountID, let last = attempts[accountID] else { return false }
+        let elapsed = now.timeIntervalSince(last)
+        // 批量网络超时为 20 秒；进程被系统终止时不能永久显示“正在刷新”。
+        return elapsed >= 0 && elapsed < 25
+    }
+
     func displayStatus(at now: Date) -> String? {
+        if isRefreshing(at: now) { return "正在刷新收益…" }
         if let message { return message }
-        guard let accountID else { return "请先打开 App 登录" }
+        guard accountID != nil else { return "请先打开 App 登录" }
         let remaining = remainingSeconds(at: now)
         let retry = remaining > 0 ? "，约\((remaining + 59) / 60)分钟后可重试" : "，请点刷新"
         if refreshOutcome == .discarded { return "会话已更新，结果已丢弃" + retry }
-        if refreshOutcome == .inFlight, let last = attempts[accountID] {
-            if now.timeIntervalSince(last) < 25 { return "正在刷新收益…" }
+        if refreshOutcome == .inFlight {
             return "上次刷新未完成" + retry
         }
         if snapshot?.total(for: BeijingDay.key(now)) == nil {
             return remaining > 0 ? "暂无今日数据" + retry : "尚未取得今日数据，请点刷新"
         }
-        return nil
+        return remaining > 0 ? "使用缓存，约\((remaining + 59) / 60)分钟后可刷新" : "点击右上角刷新收益"
     }
 
     // These entries only update text; they do not start network requests or bypass the gate.
     func statusTransitionDates(after now: Date) -> [Date] {
         guard let accountID, let last = attempts[accountID] else { return [] }
-        var dates = [last.addingTimeInterval(IncomeWidgetConstants.minimumRefreshInterval)]
+        var dates = stride(from: 60, through: Int(IncomeWidgetConstants.minimumRefreshInterval), by: 60)
+            .map { last.addingTimeInterval(TimeInterval($0)) }
         if refreshOutcome == .inFlight { dates.append(last.addingTimeInterval(25)) }
         return dates.filter { $0 > now }
     }

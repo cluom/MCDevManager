@@ -154,9 +154,21 @@ final class WidgetStore: @unchecked Sendable {
                 diagnostics.record(.reserveSkipped, details)
                 return nil
             }
-            guard let credential = try vault.read(), credential.accountID == accountID,
-                  credential.revision == state.revision else { throw IncomeWidgetError.credentials }
+            let credential: WidgetCredential
+            do {
+                guard let stored = try vault.read(), stored.accountID == accountID,
+                      stored.revision == state.revision else { throw IncomeWidgetError.credentials }
+                credential = stored
+            } catch {
+                // timeline 只读缓存，因此请求前的凭据错误也须在同一账号锁内持久化。
+                state.message = IncomeWidgetError.credentials.message
+                state.refreshOutcome = .failed
+                state.refreshRevision = state.revision
+                try save(state)
+                throw IncomeWidgetError.credentials
+            }
             state.attempts[accountID] = now
+            state.message = nil
             state.refreshOutcome = .inFlight
             state.refreshRevision = credential.revision
             try save(state)

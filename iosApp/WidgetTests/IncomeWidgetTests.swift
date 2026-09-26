@@ -183,7 +183,113 @@ final class IncomeWidgetTests: XCTestCase {
         XCTAssertEqual(try store.read().remainingSeconds(at: now.addingTimeInterval(300)), 0)
         XCTAssertEqual(try store.read().displayStatus(at: now.addingTimeInterval(300)), "上次刷新未完成，请点刷新")
         XCTAssertEqual(try store.read().statusTransitionDates(after: now).sorted(),
-                       [now.addingTimeInterval(25), now.addingTimeInterval(300)])
+                       [25, 60, 120, 180, 240, 300].map { now.addingTimeInterval(TimeInterval($0)) })
+    }
+
+    func testManualButtonStatesAndCooldownFeedback() throws {
+        let (store, _, _) = try fixture()
+        XCTAssertFalse(try store.read().canRefreshManually(at: now))
+        try login(store)
+        XCTAssertTrue(try store.read().canRefreshManually(at: now))
+        let credential = try XCTUnwrap(store.reserve(now: now))
+        XCTAssertTrue(try store.read().isRefreshing(at: now))
+        XCTAssertFalse(try store.read().canRefreshManually(at: now))
+        XCTAssertFalse(try store.read().isRefreshing(at: now.addingTimeInterval(25)))
+        try store.complete(credential: credential, snapshot: snapshot(now), message: nil)
+        let state = try store.read()
+        XCTAssertFalse(state.isRefreshing(at: now))
+        XCTAssertFalse(state.canRefreshManually(at: now.addingTimeInterval(299)))
+        XCTAssertTrue(state.canRefreshManually(at: now.addingTimeInterval(300)))
+        XCTAssertEqual(state.displayStatus(at: now), "使用缓存，约5分钟后可刷新")
+        XCTAssertEqual(state.displayStatus(at: now.addingTimeInterval(240)), "使用缓存，约1分钟后可刷新")
+        XCTAssertEqual(state.displayStatus(at: now.addingTimeInterval(300)), "点击右上角刷新收益")
+        XCTAssertFalse(state.canRefreshManually(at: now.addingTimeInterval(-1)))
+    }
+
+    func testStartingManualRetryClearsOldErrorButRetainsSnapshot() throws {
+        let (store, _, _) = try fixture()
+        try login(store)
+        let first = try XCTUnwrap(store.reserve(now: now))
+        try store.complete(credential: first, snapshot: snapshot(now), message: nil)
+        try store.complete(credential: first, snapshot: nil, message: "旧错误")
+        _ = try store.reserve(now: now.addingTimeInterval(300))
+        let state = try store.read()
+        XCTAssertNil(state.message)
+        XCTAssertEqual(state.snapshot, snapshot(now))
+        XCTAssertEqual(state.displayStatus(at: now.addingTimeInterval(300)), "正在刷新收益…")
+    }
+
+    func testSystemCacheReadsAndCookieSyncDoNotReserveOrLoad() throws {
+        let (store, _, _) = try fixture()
+        try login(store)
+        for index in 0..<5 {
+            try login(store, value: "rotated-\(index)")
+            let state = WidgetRefreshService.cached(store: store, trigger: .timeline)
+            XCTAssertTrue(state.attempts.isEmpty)
+            XCTAssertNil(state.refreshOutcome)
+            XCTAssertNil(state.snapshot)
+        }
+        let log = try store.diagnostics.export()
+        XCTAssertTrue(log.contains("event=cacheRead"))
+        for event in ["refreshStarted", "reserveGranted", "requestStarted"] {
+            XCTAssertFalse(log.contains("event=\(event)"))
+        }
+    }
+
+    func testManualRefreshPublishesLoadingThenResultAndSkipsCooldown() async throws {
+        let (store, _, _) = try fixture()
+        try login(store)
+        var loads = 0
+        var states: [WidgetState] = []
+        let result = await WidgetRefreshService.refreshManually(store: store, now: now, load: { credential, date in
+            loads += 1
+            XCTAssertEqual(credential.accountID, "7")
+            XCTAssertEqual(date, self.now)
+            XCTAssertEqual(try store.read().refreshOutcome, .inFlight)
+            return self.snapshot(date)
+        }, onStateChange: { states.append(WidgetRefreshService.cached(store: store)) })
+        XCTAssertEqual(loads, 1)
+        XCTAssertEqual(states.map(\.refreshOutcome), [.inFlight, .succeeded])
+        XCTAssertEqual(result.snapshot, snapshot(now))
+        let cached = await WidgetRefreshService.refreshManually(store: store, now: now.addingTimeInterval(299), load: { _, _ in
+            XCTFail("Cooldown must not load the network")
+            throw IncomeWidgetError.invalidResponse
+        })
+        XCTAssertEqual(cached.snapshot, result.snapshot)
+        let log = try store.diagnostics.export()
+        XCTAssertTrue(log.contains("\"trigger\":\"manual\""))
+        XCTAssertTrue(log.contains("event=reserveSkipped"))
+    }
+
+    func testManualFailureStopsLoadingAndPreservesSnapshot() async throws {
+        let (store, _, _) = try fixture()
+        try login(store)
+        let credential = try XCTUnwrap(store.reserve(now: now))
+        try store.complete(credential: credential, snapshot: snapshot(now), message: nil)
+        var outcomes: [WidgetRefreshOutcome?] = []
+        let result = await WidgetRefreshService.refreshManually(store: store, now: now.addingTimeInterval(300), load: { _, _ in
+            throw IncomeWidgetError.timeout
+        }, onStateChange: { outcomes.append(WidgetRefreshService.cached(store: store).refreshOutcome) })
+        XCTAssertEqual(outcomes, [.inFlight, .failed])
+        XCTAssertEqual(result.snapshot, snapshot(now))
+        XCTAssertEqual(result.message, IncomeWidgetError.timeout.message)
+        XCTAssertFalse(result.isRefreshing(at: now.addingTimeInterval(300)))
+    }
+
+    func testMissingCredentialsAreVisibleOnCacheOnlyTimeline() async throws {
+        let (store, _, vault) = try fixture()
+        try login(store)
+        vault.value = nil
+        var notifications = 0
+        _ = await WidgetRefreshService.refreshManually(store: store, now: now, load: { _, _ in
+            XCTFail("Missing credentials must not load the network")
+            throw IncomeWidgetError.invalidResponse
+        }, onStateChange: { notifications += 1 })
+        let state = WidgetRefreshService.cached(store: store, trigger: .timeline)
+        XCTAssertEqual(state.message, IncomeWidgetError.credentials.message)
+        XCTAssertEqual(state.refreshOutcome, .failed)
+        XCTAssertTrue(state.attempts.isEmpty)
+        XCTAssertEqual(notifications, 1)
     }
 
     func testDiscardedAttemptHasDiagnosticReasonAndCannotOverwriteNewAttempt() throws {

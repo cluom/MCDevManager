@@ -4,28 +4,38 @@ import os
 enum WidgetRefreshService {
     private static let logger = Logger(subsystem: "com.lemon.mcdevmanagermp", category: "IncomeWidget")
 
-    static func cached() -> WidgetState {
+    static func cached(store suppliedStore: WidgetStore? = nil, trigger: WidgetRefreshTrigger = .snapshot) -> WidgetState {
         do {
-            let store = try WidgetStore.live()
+            let store = try suppliedStore ?? WidgetStore.live()
             let state = try store.read()
             var details = state.diagnosticDetails()
-            details.trigger = .snapshot
+            details.trigger = trigger
             store.diagnostics.record(.cacheRead, details)
             return state
         }
         catch { return WidgetState(message: message(for: error)) }
     }
 
-    static func refresh(trigger: WidgetRefreshTrigger = .timeline) async -> WidgetState {
+    // 只有手动 Intent 调用此入口；注入项供离线测试使用，不改变生产凭据或请求地址。
+    static func refreshManually(store suppliedStore: WidgetStore? = nil, now: Date = Date(),
+                                load: ((WidgetCredential, Date) async throws -> IncomeSnapshot)? = nil,
+                                onStateChange: () -> Void = {}) async -> WidgetState {
+        let trigger = WidgetRefreshTrigger.manual
         let started = Date()
+        // 包括冷却跳过与失败，均让乐观按钮恢复为真实持久化状态。
+        defer { onStateChange() }
         do {
-            let store = try WidgetStore.live()
+            let store = try suppliedStore ?? WidgetStore.live()
             var details = try store.read().diagnosticDetails()
             details.trigger = trigger
             store.diagnostics.record(.refreshStarted, details)
-            if let credential = try store.reserve(now: Date()) {
+            if let credential = try store.reserve(now: now) {
+                // reserve 的文件锁已释放，通知 timeline 展示“正在刷新”。
+                onStateChange()
                 do {
-                    let snapshot = try await IncomeAPI(diagnostics: store.diagnostics).load(credential: credential, now: Date())
+                    let snapshot: IncomeSnapshot
+                    if let load { snapshot = try await load(credential, now) }
+                    else { snapshot = try await IncomeAPI(diagnostics: store.diagnostics).load(credential: credential, now: now) }
                     try store.complete(credential: credential, snapshot: snapshot, message: nil)
                     logger.info("Network load completed; see completionSaved/completionDropped for cache outcome")
                 } catch {
@@ -46,8 +56,9 @@ enum WidgetRefreshService {
             return state
         } catch {
             logger.warning("Shared widget state unavailable")
-            let failure = WidgetDiagnosticDetails.failure(error)
-            if let store = try? WidgetStore.live() { store.diagnostics.record(.refreshFailed, failure) }
+            var failure = WidgetDiagnosticDetails.failure(error)
+            failure.trigger = trigger
+            if let store = try? suppliedStore ?? WidgetStore.live() { store.diagnostics.record(.refreshFailed, failure) }
             else { logger.warning("\(WidgetDiagnostics.line(.refreshFailed, failure), privacy: .public)") }
             return WidgetState(message: message(for: error))
         }

@@ -23,28 +23,48 @@ struct IncomeProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<IncomeEntry>) -> Void) {
-        Task {
-            let state = await WidgetRefreshService.refresh()
-            let now = Date()
-            let midnight = BeijingDay.start(now).addingTimeInterval(86400)
-            // 午夜即使系统延迟联网，也先纠正今日/昨日标签，不沿用昨日金额冒充今日。
-            let dates = Set([now, midnight, midnight.addingTimeInterval(86400)] + state.statusTransitionDates(after: now))
-            let entries = dates.sorted().map { IncomeEntry(date: $0, state: state) }
-            // 仅向系统提出下次刷新建议，实际时间由 WidgetKit 决定，并非后台定时器。
-            completion(Timeline(entries: entries, policy: .after(min(now.addingTimeInterval(900), midnight))))
-        }
+        // 系统调度、回到桌面和 Cookie 同步均只读缓存；网络入口仅在手动 Intent。
+        let state = WidgetRefreshService.cached(trigger: .timeline)
+        let now = Date()
+        let midnight = BeijingDay.start(now).addingTimeInterval(86400)
+        let dates = Set([now, midnight, midnight.addingTimeInterval(86400)] + state.statusTransitionDates(after: now))
+        let entries = dates.sorted().map { IncomeEntry(date: $0, state: state) }
+        // 午夜只纠正日期归属，不发请求，也不沿用昨日金额冒充今日。
+        completion(Timeline(entries: entries, policy: .after(midnight)))
     }
 }
 
 struct RefreshIncomeIntent: AppIntent {
     static var title: LocalizedStringResource = "刷新收益"
-    static var description = IntentDescription("刷新今日和昨日收益，五分钟内使用缓存。")
+    static var description = IntentDescription("仅手动请求今日和昨日收益，五分钟内使用缓存。")
     static var openAppWhenRun = false
 
     func perform() async throws -> some IntentResult {
-        _ = await WidgetRefreshService.refresh(trigger: .manual)
-        // 返回后系统会重新获取 timeline；同一个持久化限频器会拦截重复请求。
+        _ = await WidgetRefreshService.refreshManually {
+            WidgetCenter.shared.reloadTimelines(ofKind: IncomeWidgetConstants.kind)
+        }
+        // 开始与结束均重读缓存；返回后系统也会重载，但不会额外联网。
         return .result()
+    }
+}
+
+// Toggle 的乐观状态能在 Intent 返回前响应点击；仅表示本次请求是否正在进行。
+// 外观仍是刷新按钮。WidgetKit 动画最长两秒，转一圈后用状态文案反馈等待。
+private struct RefreshIncomeToggleStyle: ToggleStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.isLuminanceReduced) private var luminanceReduced
+
+    func makeBody(configuration: Configuration) -> some View {
+        Button { configuration.isOn.toggle() } label: {
+            configuration.label
+                .rotationEffect(.degrees(configuration.isOn ? 360 : 0))
+                .animation(configuration.isOn && !reduceMotion && !luminanceReduced
+                           ? .linear(duration: 0.8) : nil, value: configuration.isOn)
+                .frame(width: 26, height: 26)
+        }
+        .buttonStyle(.plain)
+        .disabled(configuration.isOn)
+        .accessibilityValue(configuration.isOn ? "正在刷新" : "等待刷新")
     }
 }
 
@@ -67,13 +87,15 @@ struct IncomeWidgetView: View {
                 Image(systemName: "diamond.fill").foregroundStyle(accent)
                 Text("PE 收益").font(.caption.weight(.semibold))
                 Spacer(minLength: 2)
-                Button(intent: RefreshIncomeIntent()) {
+                Toggle(isOn: entry.state.isRefreshing(at: entry.date), intent: RefreshIncomeIntent()) {
                     Image(systemName: "arrow.clockwise").font(.caption.weight(.semibold))
-                        .frame(width: 26, height: 26)
                 }
-                .buttonStyle(.plain)
+                .toggleStyle(RefreshIncomeToggleStyle())
+                .disabled(!entry.state.canRefreshManually(at: entry.date))
+                .opacity(entry.state.canRefreshManually(at: entry.date) || entry.state.isRefreshing(at: entry.date) ? 1 : 0.4)
                 .tint(accent)
-                .accessibilityLabel("刷新收益，五分钟内不重复请求")
+                .accessibilityLabel("刷新收益")
+                .accessibilityHint(status ?? "五分钟内不重复请求")
             }
             if family == .systemMedium {
                 HStack(alignment: .top, spacing: 20) {
@@ -132,7 +154,7 @@ struct MCDevIncomeWidget: Widget {
             IncomeWidgetView(entry: entry)
         }
         .configurationDisplayName("今日与昨日收益")
-        .description("当前登录账号的 PE 钻石流水，含作品销售与联机大厅内购。五分钟内不重复请求。")
+        .description("手动刷新当前账号的今日与昨日 PE 钻石流水，含作品销售与联机大厅内购；五分钟内不重复请求。")
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }
