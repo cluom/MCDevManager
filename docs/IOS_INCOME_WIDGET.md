@@ -29,6 +29,13 @@
 6. 重签适配优先读取 `ALTAppGroups` 中与原分组匹配的实际分组，然后尝试原配置；不盲目使用其他 App 的共享分组。无法共享时显示配置/登录错误，不降级成明文公共文件。
 7. 安装完成后先启动 App 并登录一次，再在桌面添加「今日与昨日收益」。若无法显示，检查签名后的主程序和扩展是否都包含同一个 App Group。
 
+### AltStore 3009 名称兼容
+
+- 主程序及扩展的原始 `Info.plist` 使用 ASCII 名称 `MCDevManager` / `IncomeWidget`；中文桌面名称通过各自的 `zh-Hans.lproj/InfoPlist.strings` 保留。
+- AltStore 注册扩展时会拼接主程序和扩展的原始显示名称；纯中文默认名称会触发其已知的非 ASCII 名称兼容问题。仅修改 IPA 文件名或 `CFBundleName` 不够，因为它优先读取 `CFBundleDisplayName`。
+- 静态检查校验默认名称及本地化配置；打包脚本再次检查实际构建产物，确保英文注册名和中文资源都存在。应用标识、共享分组和数据口径保持不变。
+- [AltStore 官方错误代码说明：3009](https://faq.altstore.io/altstore-classic/error-codes)
+
 ## 验证
 
 Windows 可运行：
@@ -58,7 +65,7 @@ Swift 测试覆盖：北京时间边界、五分钟边界/失败/重启/重登�
 - 模拟离线、登录过期、换账号、退出登录、午夜和重启，检查提示、旧数据标识与钥匙串可访问性。
 - 确认扩展在较多作品的账号下仍能在系统执行/内存预算内完成。
 
-本次开发环境为 Windows：12 项 JVM 会话/Cookie 测试通过，Xcode 工程静态检查、三个 plist 的 XML 检查、打包脚本的 Bash 语法检查通过。另补了 12 项 Swift 测试并接入 CI，但尚未运行；这些本地检查不等同于 Swift / Xcode 编译通过，IPA 构建和 AltStore 真机验收需要后续运行。
+本次开发环境为 Windows：12 项 JVM 会话/Cookie 测试通过，Xcode 工程静态检查、三个 plist 的 XML 检查、打包脚本的 Bash 语法检查通过。2026-09-26 的 [iOS Build #2](https://github.com/cluom/MCDevManager/actions/runs/36249433610) 已通过 12 项 Swift 测试、Xcode 编译和扩展打包校验。随后真机侧载报告 AltStore 3009，已据此补充上述名称兼容修复；修复版的构建结果及真机安装仍须另行验证。
 
 参考：
 

@@ -1,0 +1,3 @@
+/* Keep raw Info.plist ASCII for AltStore App ID registration. */
+"CFBundleDisplayName" = "收益小组件";
+"CFBundleName" = "收益小组件";

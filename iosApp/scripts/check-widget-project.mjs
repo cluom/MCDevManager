@@ -45,6 +45,28 @@ const project = value();
 assert.equal(cursor, tokens.length);
 const objects = project.objects;
 const root = objects[project.rootObject];
+// AltStore reads raw Info.plist names when registering App IDs, not localized strings.
+const registrationName = /^[A-Za-z0-9][A-Za-z0-9 -]*$/;
+for (const invalid of ['', ' ', '开发者内容管理器', '收益小组件', '开发者内容管理器 收益小组件']) {
+    assert.ok(!registrationName.test(invalid), `invalid registration name accepted: ${invalid}`);
+}
+for (const valid of ['MCDevManager', 'IncomeWidget', 'MCDevManager IncomeWidget']) {
+    assert.ok(registrationName.test(valid));
+}
+for (const [folder, name, localized] of [
+    ['iosApp', 'MCDevManager', '开发者内容管理器'],
+    ['IncomeWidget', 'IncomeWidget', '收益小组件'],
+]) {
+    const plist = fs.readFileSync(path.join(ios, folder, 'Info.plist'), 'utf8');
+    for (const key of ['CFBundleDisplayName', 'CFBundleName']) {
+        const match = plist.match(new RegExp(`<key>${key}</key>\\s*<string>([^<]*)</string>`));
+        assert.ok(match && registrationName.test(match[1]), `${folder}/${key} must be a nonempty ASCII registration name`);
+        assert.equal(match[1], name);
+    }
+    const strings = fs.readFileSync(path.join(ios, folder, 'zh-Hans.lproj/InfoPlist.strings'), 'utf8');
+    assert.ok(strings.includes(`"CFBundleDisplayName" = "${localized}";`), `${folder} must retain its Chinese display name`);
+}
+assert.ok(root.knownRegions.includes('zh-Hans'), 'Chinese bundle localization must be declared');
 const targets = root.targets.map(id => ({ id, ...objects[id] }));
 const app = targets.find(t => t.name === 'iosApp');
 const widget = targets.find(t => t.name === 'IncomeWidget');
@@ -77,4 +99,4 @@ for (const file of ['ios.yml', 'build-test.yml', 'release.yml']) {
     assert.ok(workflow.includes('swift test --package-path iosApp'));
     assert.ok(workflow.includes('bash iosApp/scripts/prepare-widget.sh "$APP_PATH"'));
 }
-console.log('Xcode project syntax, widget embedding, shared sources, signing and all 3 CI entry points: OK');
+console.log('Xcode project syntax, ASCII registration names, Chinese localization, widget embedding, shared sources, signing and all 3 CI entry points: OK');

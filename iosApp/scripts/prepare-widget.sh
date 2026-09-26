@@ -7,6 +7,26 @@ WIDGET_PATH="$APP_PATH/PlugIns/IncomeWidget.appex"
 test -f "$APP_PATH/Info.plist"
 test -f "$WIDGET_PATH/Info.plist"
 PLIST=/usr/libexec/PlistBuddy
+
+# AltStore registers App IDs using raw bundle names; keep Chinese in localized resources only.
+verify_bundle_names() {
+    local BUNDLE="$1" EXPECTED_NAME="$2" EXPECTED_LOCALIZED="$3"
+    local NAME KEY NAME_PATTERN='^[A-Za-z0-9][A-Za-z0-9 -]*$'
+    for KEY in CFBundleDisplayName CFBundleName; do
+        NAME=$($PLIST -c "Print :$KEY" "$BUNDLE/Info.plist")
+        if ! [[ "$NAME" =~ $NAME_PATTERN ]]; then
+            printf 'Invalid AltStore registration name in %s (%s): %s\n' "$BUNDLE" "$KEY" "$NAME" >&2
+            exit 1
+        fi
+    done
+    test "$($PLIST -c 'Print :CFBundleDisplayName' "$BUNDLE/Info.plist")" = "$EXPECTED_NAME"
+    local LOCALIZED="$BUNDLE/zh-Hans.lproj/InfoPlist.strings"
+    test -f "$LOCALIZED"
+    test "$(/usr/bin/plutil -extract CFBundleDisplayName raw -o - "$LOCALIZED")" = "$EXPECTED_LOCALIZED"
+}
+verify_bundle_names "$APP_PATH" 'MCDevManager' '开发者内容管理器'
+verify_bundle_names "$WIDGET_PATH" 'IncomeWidget' '收益小组件'
+
 APP_ID=$($PLIST -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist")
 WIDGET_ID=$($PLIST -c 'Print :CFBundleIdentifier' "$WIDGET_PATH/Info.plist")
 GROUP_ID=$($PLIST -c 'Print :IncomeWidgetAppGroup' "$APP_PATH/Info.plist")
@@ -38,4 +58,4 @@ for BUNDLE in "$APP_PATH" "$WIDGET_PATH"; do
     codesign --display --entitlements :- "$BUNDLE" > "$TEMP_DIR/actual.plist" 2>/dev/null
     test "$($PLIST -c 'Print :com.apple.security.application-groups:0' "$TEMP_DIR/actual.plist")" = "$GROUP_ID"
 done
-printf '%s\n' 'Widget extension, versions and shared-group entitlements verified; re-sign before installing.'
+printf '%s\n' 'ASCII registration names, Chinese display names, widget extension, versions and shared-group entitlements verified; re-sign before installing.'

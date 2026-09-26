@@ -1,0 +1,3 @@
+/* Keep raw Info.plist ASCII for AltStore App ID registration. */
+"CFBundleDisplayName" = "开发者内容管理器";
+"CFBundleName" = "开发者内容管理器";

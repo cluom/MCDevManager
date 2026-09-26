@@ -2,7 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleDisplayName</key><string>收益小组件</string>
+    <key>CFBundleDisplayName</key><string>IncomeWidget</string>
+    <key>CFBundleName</key><string>IncomeWidget</string>
     <key>IncomeWidgetAppGroup</key><string>$(INCOME_WIDGET_APP_GROUP)</string>
     <key>NSExtension</key>
     <dict>
