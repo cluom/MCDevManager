@@ -28,8 +28,8 @@ struct IncomeProvider: TimelineProvider {
             let now = Date()
             let midnight = BeijingDay.start(now).addingTimeInterval(86400)
             // 午夜即使系统延迟联网，也先纠正今日/昨日标签，不沿用昨日金额冒充今日。
-            let entries = [IncomeEntry(date: now, state: state), IncomeEntry(date: midnight, state: state),
-                           IncomeEntry(date: midnight.addingTimeInterval(86400), state: state)]
+            let dates = Set([now, midnight, midnight.addingTimeInterval(86400)] + state.statusTransitionDates(after: now))
+            let entries = dates.sorted().map { IncomeEntry(date: $0, state: state) }
             // 仅向系统提出下次刷新建议，实际时间由 WidgetKit 决定，并非后台定时器。
             completion(Timeline(entries: entries, policy: .after(min(now.addingTimeInterval(900), midnight))))
         }
@@ -42,7 +42,7 @@ struct RefreshIncomeIntent: AppIntent {
     static var openAppWhenRun = false
 
     func perform() async throws -> some IntentResult {
-        _ = await WidgetRefreshService.refresh()
+        _ = await WidgetRefreshService.refresh(trigger: .manual)
         // 返回后系统会重新获取 timeline；同一个持久化限频器会拦截重复请求。
         return .result()
     }
@@ -58,10 +58,7 @@ struct IncomeWidgetView: View {
         entry.state.snapshot?.total(for: BeijingDay.key(BeijingDay.start(entry.date).addingTimeInterval(-86400)))
     }
     private var status: String? {
-        if let message = entry.state.message { return message }
-        if entry.state.accountID == nil { return "请先打开 App 登录" }
-        if today == nil { return "等待刷新 · 五分钟内不重复请求" }
-        return nil
+        entry.state.displayStatus(at: entry.date)
     }
 
     var body: some View {

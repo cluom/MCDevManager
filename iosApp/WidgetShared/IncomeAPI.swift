@@ -3,6 +3,12 @@ import Foundation
 // 独立的轻量客户端；不把 Compose/Kotlin 运行时加载进 Widget 扩展。
 final class IncomeAPI: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     private static let origin = URL(string: "https://mc-launcher.webapp.163.com/")!
+    private let diagnostics: WidgetDiagnostics?
+
+    init(diagnostics: WidgetDiagnostics? = nil) {
+        self.diagnostics = diagnostics
+        super.init()
+    }
 
     func urlSession(_ session: URLSession, task: URLSessionTask,
                     willPerformHTTPRedirection response: HTTPURLResponse,
@@ -37,13 +43,18 @@ final class IncomeAPI: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
 
     private func fetch(session: URLSession, credential: WidgetCredential, now: Date) async throws -> IncomeSnapshot {
         let listQuery = [URLQueryItem(name: "start", value: "0"), URLQueryItem(name: "span", value: "2147483647")]
-        async let normal: ResourceList = get("items/categories/pe", query: listQuery, session: session, credential: credential)
-        async let lobby: LobbyList = get("goods/pe/summary", query: listQuery, session: session, credential: credential)
+        async let normal: ResourceList = get("items/categories/pe", endpoint: .resources, query: listQuery, session: session, credential: credential)
+        async let lobby: LobbyList = get("goods/pe/summary", endpoint: .lobbyResources, query: listQuery, session: session, credential: credential)
         let (resources, lobbyResources) = try await (normal, lobby)
+        diagnostics?.record(.sourcesLoaded, WidgetDiagnosticDetails(endpoint: .resources,
+            expectedCount: resources.count, actualCount: resources.item.count))
+        diagnostics?.record(.sourcesLoaded, WidgetDiagnosticDetails(endpoint: .lobbyResources,
+            expectedCount: lobbyResources.count, actualCount: lobbyResources.items.count))
         let sources = try Self.sources(resources: resources, lobby: lobbyResources)
         var totals = [IncomeTotal(), IncomeTotal()]
         // 最多四个并发请求，整个刷新有 20 秒截止时间；任一失败不保存残缺总额。
         let jobs = sources.flatMap { source in [0, 1].map { (source, $0) } }
+        diagnostics?.record(.sourcesLoaded, WidgetDiagnosticDetails(sourceCount: sources.count, jobCount: jobs.count))
         try await withThrowingTaskGroup(of: (Int, IncomeTotal).self) { group in
             var next = 0
             func enqueue(_ index: Int) {
@@ -52,7 +63,7 @@ final class IncomeAPI: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
                     try Task.checkCancellation()
                     let day = BeijingDay.start(now).addingTimeInterval(Double(-dayOffset) * 86400)
                     let (begin, end) = BeijingDay.range(day)
-                    let result: RealtimeTotal = try await self.get(source.path, query: [
+                    let result: RealtimeTotal = try await self.get(source.path, endpoint: source.lobby ? .lobbySales : .sales, query: [
                         URLQueryItem(name: "begin_time", value: begin),
                         URLQueryItem(name: "end_time", value: end)
                     ], session: session, credential: credential)
@@ -68,7 +79,7 @@ final class IncomeAPI: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
         return IncomeSnapshot(day: BeijingDay.key(now), today: totals[0], yesterday: totals[1], updatedAt: now)
     }
 
-    private func get<T: Decodable>(_ path: String, query: [URLQueryItem], session: URLSession,
+    private func get<T: Decodable>(_ path: String, endpoint: WidgetEndpoint, query: [URLQueryItem], session: URLSession,
                                     credential: WidgetCredential) async throws -> T {
         var components = URLComponents(url: Self.origin.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
         components.queryItems = query
@@ -76,11 +87,28 @@ final class IncomeAPI: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
         request.setValue(credential.cookieHeader, forHTTPHeaderField: "Cookie")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.cachePolicy = .reloadIgnoringLocalCacheData
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse else { throw IncomeWidgetError.invalidResponse }
-        if http.statusCode == 401 { throw IncomeWidgetError.loginExpired }
-        guard (200..<300).contains(http.statusCode) else { throw IncomeWidgetError.invalidResponse }
-        return try Self.decode(data)
+        let started = Date()
+        var details = WidgetDiagnosticDetails(endpoint: endpoint, requestID: UUID())
+        diagnostics?.record(.requestStarted, details)
+        do {
+            let (data, response) = try await session.data(for: request)
+            details.elapsedMs = Int(Date().timeIntervalSince(started) * 1000)
+            details.responseBytes = data.count
+            guard let http = response as? HTTPURLResponse else { throw IncomeWidgetError.invalidResponse }
+            details.httpStatus = http.statusCode
+            diagnostics?.record(.requestFinished, details)
+            if http.statusCode == 401 { throw IncomeWidgetError.loginExpired }
+            guard (200..<300).contains(http.statusCode) else { throw IncomeWidgetError.invalidResponse }
+            return try Self.decode(data)
+        } catch {
+            let failure = WidgetDiagnosticDetails.failure(error)
+            details.reason = failure.reason
+            details.errorCode = failure.errorCode
+            details.decodingFailure = failure.decodingFailure
+            details.elapsedMs = Int(Date().timeIntervalSince(started) * 1000)
+            diagnostics?.record(.requestFailed, details)
+            throw error
+        }
     }
 
     static func decode<T: Decodable>(_ data: Data) throws -> T {

@@ -64,6 +64,8 @@ struct IncomeSnapshot: Codable, Equatable {
     }
 }
 
+enum WidgetRefreshOutcome: String, Codable { case inFlight, succeeded, failed, discarded }
+
 struct WidgetState: Codable {
     var accountID: String?
     var revision: UUID?
@@ -71,12 +73,49 @@ struct WidgetState: Codable {
     // 按账号保存尝试时间；切换账号、重登、失败和进程重启均不能绕过五分钟限频。
     var attempts: [String: Date] = [:]
     var message: String?
+    // Optional fields keep state.json from older installations readable.
+    var refreshOutcome: WidgetRefreshOutcome?
+    var refreshRevision: UUID?
 
     func canRefresh(accountID: String, now: Date) -> Bool {
         guard let last = attempts[accountID] else { return true }
         let elapsed = now.timeIntervalSince(last)
         // 时钟回拨也不提前解除限频。
         return elapsed >= IncomeWidgetConstants.minimumRefreshInterval
+    }
+
+    func remainingSeconds(at now: Date) -> Int {
+        guard let accountID, let last = attempts[accountID] else { return 0 }
+        return Int(min(86400, max(0, ceil(IncomeWidgetConstants.minimumRefreshInterval - now.timeIntervalSince(last)))))
+    }
+
+    func displayStatus(at now: Date) -> String? {
+        if let message { return message }
+        guard let accountID else { return "请先打开 App 登录" }
+        let remaining = remainingSeconds(at: now)
+        let retry = remaining > 0 ? "，约\((remaining + 59) / 60)分钟后可重试" : "，请点刷新"
+        if refreshOutcome == .discarded { return "会话已更新，结果已丢弃" + retry }
+        if refreshOutcome == .inFlight, let last = attempts[accountID] {
+            if now.timeIntervalSince(last) < 25 { return "正在刷新收益…" }
+            return "上次刷新未完成" + retry
+        }
+        if snapshot?.total(for: BeijingDay.key(now)) == nil {
+            return remaining > 0 ? "暂无今日数据" + retry : "尚未取得今日数据，请点刷新"
+        }
+        return nil
+    }
+
+    // These entries only update text; they do not start network requests or bypass the gate.
+    func statusTransitionDates(after now: Date) -> [Date] {
+        guard let accountID, let last = attempts[accountID] else { return [] }
+        var dates = [last.addingTimeInterval(IncomeWidgetConstants.minimumRefreshInterval)]
+        if refreshOutcome == .inFlight { dates.append(last.addingTimeInterval(25)) }
+        return dates.filter { $0 > now }
+    }
+
+    func diagnosticDetails(at now: Date = Date()) -> WidgetDiagnosticDetails {
+        WidgetDiagnosticDetails(hasAccount: accountID != nil, hasSnapshot: snapshot != nil,
+                                remainingSeconds: remainingSeconds(at: now), outcome: refreshOutcome)
     }
 }
 

@@ -48,6 +48,7 @@ final class WidgetStore: @unchecked Sendable {
     private let vault: WidgetCredentialVault
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+    let diagnostics: WidgetDiagnostics
 
     static func live() throws -> WidgetStore {
         let configured = Bundle.main.object(forInfoDictionaryKey: "IncomeWidgetAppGroup") as? String
@@ -67,6 +68,7 @@ final class WidgetStore: @unchecked Sendable {
     init(directory: URL, vault: WidgetCredentialVault) throws {
         self.directory = directory
         self.vault = vault
+        self.diagnostics = WidgetDiagnostics(directory: directory)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         var url = directory
         var values = URLResourceValues()
@@ -110,23 +112,32 @@ final class WidgetStore: @unchecked Sendable {
                 state.revision = nil
                 state.snapshot = nil
                 state.message = "请打开 App 同步登录状态"
+                state.refreshOutcome = nil
+                state.refreshRevision = nil
                 try save(state)
             }
             if accountID.isEmpty {
                 try vault.delete()
+                diagnostics.record(.sessionCleared, state.diagnosticDetails())
                 return changedAccount
             }
             let cookies = try decoder.decode([String: String].self, from: Data(cookiesJSON.utf8))
             try WidgetCredential.validate(cookies)
             let old = try vault.read()
             if !changedAccount, let old, old.accountID == accountID, old.cookies == cookies,
-               state.revision == old.revision { return false }
+               state.revision == old.revision {
+                diagnostics.record(.sessionUnchanged, state.diagnosticDetails())
+                return false
+            }
             let credential = WidgetCredential(accountID: accountID, revision: UUID(), cookies: cookies)
             try vault.write(credential)
             state.accountID = accountID
             state.revision = credential.revision
             state.message = nil
             try save(state)
+            var details = state.diagnosticDetails()
+            details.reason = changedAccount ? .accountChanged : .cookiesChanged
+            diagnostics.record(.sessionSync, details)
             return true
         }
     }
@@ -135,11 +146,19 @@ final class WidgetStore: @unchecked Sendable {
     func reserve(now: Date) throws -> WidgetCredential? {
         try locked {
             var state = try readState()
-            guard let accountID = state.accountID, state.canRefresh(accountID: accountID, now: now) else { return nil }
+            guard let accountID = state.accountID, state.canRefresh(accountID: accountID, now: now) else {
+                var details = state.diagnosticDetails(at: now)
+                details.reason = state.accountID == nil ? .noAccount : .cooldown
+                diagnostics.record(.reserveSkipped, details)
+                return nil
+            }
             guard let credential = try vault.read(), credential.accountID == accountID,
                   credential.revision == state.revision else { throw IncomeWidgetError.credentials }
             state.attempts[accountID] = now
+            state.refreshOutcome = .inFlight
+            state.refreshRevision = credential.revision
             try save(state)
+            diagnostics.record(.reserveGranted, state.diagnosticDetails(at: now))
             return credential
         }
     }
@@ -148,10 +167,25 @@ final class WidgetStore: @unchecked Sendable {
         try locked {
             var state = try readState()
             // 旧账号或旧 Cookie 发出的请求晚回来，不能覆盖切换/退出后的状态。
-            guard state.accountID == credential.accountID, state.revision == credential.revision else { return }
+            guard state.accountID == credential.accountID, state.revision == credential.revision else {
+                // Only annotate the rejected attempt, never overwrite a newer attempt/account.
+                if state.accountID == credential.accountID, state.refreshRevision == credential.revision,
+                   state.refreshOutcome == .inFlight {
+                    state.refreshOutcome = .discarded
+                    try save(state)
+                }
+                var details = state.diagnosticDetails()
+                details.accountMatches = state.accountID == credential.accountID
+                details.revisionMatches = state.revision == credential.revision
+                details.reason = details.accountMatches == true ? .revisionMismatch : .accountMismatch
+                diagnostics.record(.completionDropped, details)
+                return
+            }
             if let snapshot { state.snapshot = snapshot }
             state.message = message
+            state.refreshOutcome = snapshot != nil ? .succeeded : .failed
             try save(state)
+            diagnostics.record(.completionSaved, state.diagnosticDetails())
         }
     }
 }

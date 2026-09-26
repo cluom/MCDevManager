@@ -42,6 +42,12 @@ object Logger {
     private var currentLogDate: LocalDate? = null
     private var currentLogIndex: Int = 0
     private var currentLogFile: Path? = null
+    private var supplementalSource: SupplementalLogSource? = null
+
+    /** iOS installs a read-only provider; other platforms retain their existing log behavior. */
+    internal fun installSupplementalSource(read: () -> String, clear: () -> Unit) {
+        supplementalSource = SupplementalLogSource(read, clear)
+    }
 
     fun i(message: String) {
         info(message)
@@ -226,6 +232,7 @@ object Logger {
                 }
                 if (batch.isNotEmpty()) emit(ArrayList(batch))
             }
+            supplementalSource?.lines()?.takeIf { it.isNotEmpty() }?.let { emit(it) }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             println("无法读取日志文件: ${e.message}")
@@ -246,5 +253,6 @@ object Logger {
                     .forEach { FileSystem.SYSTEM.delete(it) }
             }
         }.onFailure { println("无法清空日志: ${it.message}") }
+        supplementalSource?.clearSafely()
     }
 }

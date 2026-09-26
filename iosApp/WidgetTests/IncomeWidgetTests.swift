@@ -111,6 +111,96 @@ final class IncomeWidgetTests: XCTestCase {
         XCTAssertNil(try store.reserve(now: now.addingTimeInterval(50)))
     }
 
+    func testMissingDataIsNotMistakenForCooldown() throws {
+        let (store, _, _) = try fixture()
+        try login(store)
+        XCTAssertEqual(try store.read().displayStatus(at: now), "尚未取得今日数据，请点刷新")
+        _ = try store.reserve(now: now)
+        XCTAssertEqual(try store.read().displayStatus(at: now), "正在刷新收益…")
+        XCTAssertEqual(try store.read().displayStatus(at: now.addingTimeInterval(25)), "上次刷新未完成，约5分钟后可重试")
+        XCTAssertEqual(try store.read().remainingSeconds(at: now.addingTimeInterval(299)), 1)
+        XCTAssertEqual(try store.read().remainingSeconds(at: now.addingTimeInterval(300)), 0)
+        XCTAssertEqual(try store.read().displayStatus(at: now.addingTimeInterval(300)), "上次刷新未完成，请点刷新")
+        XCTAssertEqual(try store.read().statusTransitionDates(after: now).sorted(),
+                       [now.addingTimeInterval(25), now.addingTimeInterval(300)])
+    }
+
+    func testDiscardedAttemptHasDiagnosticReasonAndCannotOverwriteNewAttempt() throws {
+        let (store, _, _) = try fixture()
+        try login(store)
+        let old = try XCTUnwrap(store.reserve(now: now))
+        try login(store, value: "rotated")
+        try store.complete(credential: old, snapshot: snapshot(now), message: nil)
+        XCTAssertEqual(try store.read().refreshOutcome, .discarded)
+        XCTAssertNil(try store.read().snapshot)
+        XCTAssertEqual(try store.read().displayStatus(at: now), "会话已更新，结果已丢弃，约5分钟后可重试")
+        let diagnostic = try store.diagnostics.export()
+        XCTAssertTrue(diagnostic.contains("event=completionDropped"))
+        XCTAssertTrue(diagnostic.contains("revisionMismatch"))
+        let current = try XCTUnwrap(store.reserve(now: now.addingTimeInterval(300)))
+        try store.complete(credential: old, snapshot: nil, message: "old-error")
+        XCTAssertEqual(try store.read().refreshOutcome, .inFlight)
+        try store.complete(credential: current, snapshot: snapshot(now), message: nil)
+        XCTAssertEqual(try store.read().refreshOutcome, .succeeded)
+    }
+
+    func testFailuresAndOldStateRemainReadable() throws {
+        let legacy = Data(#"{"accountID":"7","attempts":{}}"#.utf8)
+        let state = try JSONDecoder().decode(WidgetState.self, from: legacy)
+        XCTAssertNil(state.refreshOutcome)
+        XCTAssertEqual(state.displayStatus(at: now), "尚未取得今日数据，请点刷新")
+        let (store, _, _) = try fixture()
+        try login(store)
+        let credential = try XCTUnwrap(store.reserve(now: now))
+        try store.complete(credential: credential, snapshot: nil, message: "刷新超时，稍后再试")
+        XCTAssertEqual(try store.read().displayStatus(at: now), "刷新超时，稍后再试")
+        XCTAssertEqual(try store.read().refreshOutcome, .failed)
+    }
+
+    func testDiagnosticExportIsBoundedAndContainsNoSessionValues() throws {
+        let (store, dir, vault) = try fixture()
+        try login(store, id: "PRIVATE_ACCOUNT_123", value: "SECRET_COOKIE_123")
+        for _ in 0..<(WidgetDiagnostics.maximumLines + 10) {
+            store.diagnostics.record(.refreshStarted, WidgetDiagnosticDetails(trigger: .manual))
+        }
+        let reopened = try WidgetStore(directory: dir, vault: vault)
+        let text = try reopened.diagnostics.export()
+        XCTAssertEqual(text.split(separator: "\n").count, WidgetDiagnostics.maximumLines)
+        XCTAssertLessThanOrEqual(text.utf8.count, WidgetDiagnostics.maximumBytes)
+        XCTAssertFalse(text.contains("PRIVATE_ACCOUNT_123"))
+        XCTAssertFalse(text.contains("SECRET_COOKIE_123"))
+        XCTAssertFalse(text.contains("S_INFO"))
+        try reopened.diagnostics.clear()
+        XCTAssertEqual(try store.diagnostics.export(), "")
+        XCTAssertEqual(try store.read().accountID, "PRIVATE_ACCOUNT_123")
+        XCTAssertEqual(vault.value?.cookies["S_INFO"], "SECRET_COOKIE_123")
+    }
+
+    func testDiagnosticConcurrentWritersDoNotLoseRecords() throws {
+        let (store, dir, _) = try fixture()
+        let second = WidgetDiagnostics(directory: dir)
+        DispatchQueue.concurrentPerform(iterations: 40) { index in
+            (index % 2 == 0 ? store.diagnostics : second).record(.requestStarted,
+                WidgetDiagnosticDetails(endpoint: .sales, requestID: UUID()))
+        }
+        XCTAssertEqual(try store.diagnostics.export().split(separator: "\n").count, 40)
+    }
+
+    func testDiagnosticErrorsNeverExportRawDescriptions() {
+        let privateURL = "https://example.test/?Cookie=SECRET_VALUE"
+        let network = URLError(.timedOut, userInfo: [NSLocalizedDescriptionKey: privateURL])
+        let details = WidgetDiagnosticDetails.failure(network)
+        XCTAssertEqual(details.reason, .timeout)
+        XCTAssertEqual(details.errorCode, URLError.timedOut.rawValue)
+        let line = WidgetDiagnostics.line(.requestFailed, details)
+        XCTAssertFalse(line.contains("SECRET_VALUE"))
+        XCTAssertFalse(line.contains("https"))
+        let decoding = DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: privateURL))
+        let decodingDetails = WidgetDiagnosticDetails.failure(decoding)
+        XCTAssertEqual(decodingDetails.decodingFailure, .corruptData)
+        XCTAssertFalse(WidgetDiagnostics.line(.requestFailed, decodingDetails).contains("SECRET_VALUE"))
+    }
+
     func testCookieWireValueIsUnchangedAndNotInStateFile() throws {
         let (store, dir, _) = try fixture()
         try login(store)

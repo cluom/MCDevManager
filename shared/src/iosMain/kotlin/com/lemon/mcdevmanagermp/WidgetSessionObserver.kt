@@ -1,6 +1,7 @@
 package com.lemon.mcdevmanagermp
 
 import com.lemon.mcdevmanagermp.utils.CookiesStore
+import com.lemon.mcdevmanagermp.utils.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -15,6 +16,12 @@ import kotlinx.serialization.json.Json
 object WidgetSessionObserver {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var job: Job? = null
+
+    fun configureDiagnostics(read: () -> String, clear: () -> Unit) {
+        Logger.installSupplementalSource(read, clear)
+    }
+
+    fun reportDiagnostic(line: String) { Logger.d(line) }
 
     fun start(onChange: (String, String) -> Unit) {
         job?.cancel()
