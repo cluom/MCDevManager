@@ -11,7 +11,8 @@ enum WidgetDiagnosticEvent: String, Codable {
 }
 
 enum WidgetDiagnosticReason: String, Codable {
-    case noAccount, cooldown, accountChanged, cookiesChanged, accountMismatch, revisionMismatch
+    case noAccount, accountChanged, cookiesChanged, accountMismatch, revisionMismatch
+    case alreadyInFlight, attemptMismatch
     case sharedContainer, credentials, loginExpired, invalidResponse, timeout, network
     case decoding, cancelled, storage, unknown
 }
@@ -28,7 +29,6 @@ struct WidgetDiagnosticDetails: Codable {
     var hasSnapshot: Bool?
     var accountMatches: Bool?
     var revisionMatches: Bool?
-    var remainingSeconds: Int?
     var elapsedMs: Int?
     var httpStatus: Int?
     var responseBytes: Int?

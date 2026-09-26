@@ -2,7 +2,8 @@ import Foundation
 
 enum IncomeWidgetConstants {
     static let kind = "MCDevIncomeWidget"
-    static let minimumRefreshInterval: TimeInterval = 300
+    // 网络整批截止 20 秒，额外 5 秒用于进程终止后的占用恢复；不是点击冷却。
+    static let inFlightExpiryInterval: TimeInterval = 25
     static let appGroup = "group.com.lemon.mcdevmanagermp.income"
 }
 
@@ -51,6 +52,11 @@ struct IncomeTotal: Codable, Equatable {
     }
 }
 
+struct WidgetRefreshReservation {
+    let credential: WidgetCredential
+    let attemptID: UUID
+}
+
 struct IncomeSnapshot: Codable, Equatable {
     let day: String
     let today: IncomeTotal
@@ -70,23 +76,16 @@ struct WidgetState: Codable {
     var accountID: String?
     var revision: UUID?
     var snapshot: IncomeSnapshot?
-    // 按账号保存尝试时间；切换账号、重登、失败和进程重启均不能绕过五分钟限频。
+    // 保留旧字段兼容已有 state.json；仅用于识别请求是否仍在进行，不再用于冷却。
     var attempts: [String: Date] = [:]
     var message: String?
     // Optional fields keep state.json from older installations readable.
     var refreshOutcome: WidgetRefreshOutcome?
     var refreshRevision: UUID?
+    var refreshAttemptID: UUID?
 
     func canRefresh(accountID: String, now: Date) -> Bool {
-        guard let last = attempts[accountID] else { return true }
-        let elapsed = now.timeIntervalSince(last)
-        // 时钟回拨也不提前解除限频。
-        return elapsed >= IncomeWidgetConstants.minimumRefreshInterval
-    }
-
-    func remainingSeconds(at now: Date) -> Int {
-        guard let accountID, let last = attempts[accountID] else { return 0 }
-        return Int(min(86400, max(0, ceil(IncomeWidgetConstants.minimumRefreshInterval - now.timeIntervalSince(last)))))
+        self.accountID == accountID && !isRefreshing(at: now)
     }
 
     func canRefreshManually(at now: Date) -> Bool {
@@ -97,38 +96,33 @@ struct WidgetState: Codable {
     func isRefreshing(at now: Date) -> Bool {
         guard refreshOutcome == .inFlight, let accountID, let last = attempts[accountID] else { return false }
         let elapsed = now.timeIntervalSince(last)
-        // 批量网络超时为 20 秒；进程被系统终止时不能永久显示“正在刷新”。
-        return elapsed >= 0 && elapsed < 25
+        // 批量网络超时为 20 秒；进程被系统终止或时钟回拨时不能永久占用按钮。
+        return elapsed >= 0 && elapsed < IncomeWidgetConstants.inFlightExpiryInterval
     }
 
     func displayStatus(at now: Date) -> String? {
         if isRefreshing(at: now) { return "正在刷新收益…" }
         if let message { return message }
         guard accountID != nil else { return "请先打开 App 登录" }
-        let remaining = remainingSeconds(at: now)
-        let retry = remaining > 0 ? "，约\((remaining + 59) / 60)分钟后可重试" : "，请点刷新"
+        let retry = "，请点刷新"
         if refreshOutcome == .discarded { return "会话已更新，结果已丢弃" + retry }
         if refreshOutcome == .inFlight {
             return "上次刷新未完成" + retry
         }
         if snapshot?.total(for: BeijingDay.key(now)) == nil {
-            return remaining > 0 ? "暂无今日数据" + retry : "尚未取得今日数据，请点刷新"
+            return "尚未取得今日数据，请点刷新"
         }
-        return remaining > 0 ? "使用缓存，约\((remaining + 59) / 60)分钟后可刷新" : "点击右上角刷新收益"
+        return "点击右上角刷新收益"
     }
 
-    // These entries only update text; they do not start network requests or bypass the gate.
+    // 仅在系统终止刷新进程后恢复按钮，不自动重试网络。
     func statusTransitionDates(after now: Date) -> [Date] {
-        guard let accountID, let last = attempts[accountID] else { return [] }
-        var dates = stride(from: 60, through: Int(IncomeWidgetConstants.minimumRefreshInterval), by: 60)
-            .map { last.addingTimeInterval(TimeInterval($0)) }
-        if refreshOutcome == .inFlight { dates.append(last.addingTimeInterval(25)) }
-        return dates.filter { $0 > now }
+        guard isRefreshing(at: now), let accountID, let last = attempts[accountID] else { return [] }
+        return [last.addingTimeInterval(IncomeWidgetConstants.inFlightExpiryInterval)]
     }
 
     func diagnosticDetails(at now: Date = Date()) -> WidgetDiagnosticDetails {
-        WidgetDiagnosticDetails(hasAccount: accountID != nil, hasSnapshot: snapshot != nil,
-                                remainingSeconds: remainingSeconds(at: now), outcome: refreshOutcome)
+        WidgetDiagnosticDetails(hasAccount: accountID != nil, hasSnapshot: snapshot != nil, outcome: refreshOutcome)
     }
 }
 

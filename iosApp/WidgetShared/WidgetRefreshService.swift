@@ -22,21 +22,22 @@ enum WidgetRefreshService {
                                 onStateChange: () -> Void = {}) async -> WidgetState {
         let trigger = WidgetRefreshTrigger.manual
         let started = Date()
-        // 包括冷却跳过与失败，均让乐观按钮恢复为真实持久化状态。
+        // 包括重复点击跳过与失败，均让乐观按钮恢复为真实持久化状态。
         defer { onStateChange() }
         do {
             let store = try suppliedStore ?? WidgetStore.live()
             var details = try store.read().diagnosticDetails()
             details.trigger = trigger
             store.diagnostics.record(.refreshStarted, details)
-            if let credential = try store.reserve(now: now) {
+            if let reservation = try store.reserve(now: now) {
+                let credential = reservation.credential
                 // reserve 的文件锁已释放，通知 timeline 展示“正在刷新”。
                 onStateChange()
                 do {
                     let snapshot: IncomeSnapshot
                     if let load { snapshot = try await load(credential, now) }
                     else { snapshot = try await IncomeAPI(diagnostics: store.diagnostics).load(credential: credential, now: now) }
-                    try store.complete(credential: credential, snapshot: snapshot, message: nil)
+                    try store.complete(reservation: reservation, snapshot: snapshot, message: nil)
                     logger.info("Network load completed; see completionSaved/completionDropped for cache outcome")
                 } catch {
                     // 不输出 URL、响应体、账号、Cookie 或底层异常描述。
@@ -45,7 +46,7 @@ enum WidgetRefreshService {
                     failure.trigger = trigger
                     failure.elapsedMs = Int(Date().timeIntervalSince(started) * 1000)
                     store.diagnostics.record(.refreshFailed, failure)
-                    try store.complete(credential: credential, snapshot: nil, message: message(for: error))
+                    try store.complete(reservation: reservation, snapshot: nil, message: message(for: error))
                 }
             }
             let state = try store.read()

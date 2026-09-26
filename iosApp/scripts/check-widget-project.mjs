@@ -123,5 +123,8 @@ assert.ok(widgetView.includes('Toggle(isOn: entry.state.isRefreshing(at: entry.d
 assert.ok(widgetView.includes('.rotationEffect(.degrees(configuration.isOn ? 360 : 0))'));
 assert.ok(widgetView.includes('.linear(duration: 0.8)'));
 assert.ok(!widgetView.includes('repeatForever'), 'widget animation must be finite');
+assert.ok(!widgetView.includes('五分钟'), 'manual refresh must not show the removed cooldown');
+const incomeModels = fs.readFileSync(path.join(ios, 'WidgetShared/IncomeModels.swift'), 'utf8');
+assert.ok(!incomeModels.includes('minimumRefreshInterval'), 'manual refresh must not impose a fixed cooldown');
 console.log('Xcode project syntax, ASCII registration names, Chinese localization, widget embedding, shared sources, signing and all 3 CI entry points: OK');
 console.log('Cache-only timeline, manual-only network entry and optimistic one-turn refresh animation: OK');

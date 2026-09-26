@@ -114,6 +114,7 @@ final class WidgetStore: @unchecked Sendable {
                 state.message = "请打开 App 同步登录状态"
                 state.refreshOutcome = nil
                 state.refreshRevision = nil
+                state.refreshAttemptID = nil
                 try save(state)
             }
             if accountID.isEmpty {
@@ -144,13 +145,13 @@ final class WidgetStore: @unchecked Sendable {
         }
     }
 
-    /// 持久化“开始尝试”后才发请求；失败、崩溃和同时点击也受五分钟节流约束。
-    func reserve(now: Date) throws -> WidgetCredential? {
+    /// 只合并正在进行的请求；成功或失败后可立即重试，没有固定冷却。
+    func reserve(now: Date) throws -> WidgetRefreshReservation? {
         try locked {
             var state = try readState()
             guard let accountID = state.accountID, state.canRefresh(accountID: accountID, now: now) else {
                 var details = state.diagnosticDetails(at: now)
-                details.reason = state.accountID == nil ? .noAccount : .cooldown
+                details.reason = state.accountID == nil ? .noAccount : .alreadyInFlight
                 diagnostics.record(.reserveSkipped, details)
                 return nil
             }
@@ -164,6 +165,7 @@ final class WidgetStore: @unchecked Sendable {
                 state.message = IncomeWidgetError.credentials.message
                 state.refreshOutcome = .failed
                 state.refreshRevision = state.revision
+                state.refreshAttemptID = nil
                 try save(state)
                 throw IncomeWidgetError.credentials
             }
@@ -171,27 +173,31 @@ final class WidgetStore: @unchecked Sendable {
             state.message = nil
             state.refreshOutcome = .inFlight
             state.refreshRevision = credential.revision
+            let reservation = WidgetRefreshReservation(credential: credential, attemptID: UUID())
+            state.refreshAttemptID = reservation.attemptID
             try save(state)
             diagnostics.record(.reserveGranted, state.diagnosticDetails(at: now))
-            return credential
+            return reservation
         }
     }
 
-    func complete(credential: WidgetCredential, snapshot: IncomeSnapshot?, message: String?) throws {
+    func complete(reservation: WidgetRefreshReservation, snapshot: IncomeSnapshot?, message: String?) throws {
         try locked {
             var state = try readState()
+            let credential = reservation.credential
+            let attemptMatches = state.refreshAttemptID == reservation.attemptID && state.refreshOutcome == .inFlight
             // 旧账号或旧 Cookie 发出的请求晚回来，不能覆盖切换/退出后的状态。
-            guard state.accountID == credential.accountID, state.revision == credential.revision else {
+            guard state.accountID == credential.accountID, state.revision == credential.revision, attemptMatches else {
                 // Only annotate the rejected attempt, never overwrite a newer attempt/account.
-                if state.accountID == credential.accountID, state.refreshRevision == credential.revision,
-                   state.refreshOutcome == .inFlight {
+                if state.accountID == credential.accountID, attemptMatches {
                     state.refreshOutcome = .discarded
                     try save(state)
                 }
                 var details = state.diagnosticDetails()
                 details.accountMatches = state.accountID == credential.accountID
                 details.revisionMatches = state.revision == credential.revision
-                details.reason = details.accountMatches == true ? .revisionMismatch : .accountMismatch
+                details.reason = details.accountMatches != true ? .accountMismatch
+                    : (details.revisionMatches != true ? .revisionMismatch : .attemptMismatch)
                 diagnostics.record(.completionDropped, details)
                 return
             }

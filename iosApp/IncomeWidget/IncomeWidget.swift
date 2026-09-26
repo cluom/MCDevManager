@@ -18,7 +18,7 @@ struct IncomeProvider: TimelineProvider {
     func placeholder(in context: Context) -> IncomeEntry { .preview }
 
     func getSnapshot(in context: Context, completion: @escaping (IncomeEntry) -> Void) {
-        // 编辑/预览不访问网络，不消耗账号限频。
+        // 编辑/预览不访问网络。
         completion(context.isPreview ? .preview : IncomeEntry(date: Date(), state: WidgetRefreshService.cached()))
     }
 
@@ -36,7 +36,7 @@ struct IncomeProvider: TimelineProvider {
 
 struct RefreshIncomeIntent: AppIntent {
     static var title: LocalizedStringResource = "刷新收益"
-    static var description = IntentDescription("仅手动请求今日和昨日收益，五分钟内使用缓存。")
+    static var description = IntentDescription("手动请求今日和昨日收益；请求结束后可立即再次刷新。")
     static var openAppWhenRun = false
 
     func perform() async throws -> some IntentResult {
@@ -95,7 +95,7 @@ struct IncomeWidgetView: View {
                 .opacity(entry.state.canRefreshManually(at: entry.date) || entry.state.isRefreshing(at: entry.date) ? 1 : 0.4)
                 .tint(accent)
                 .accessibilityLabel("刷新收益")
-                .accessibilityHint(status ?? "五分钟内不重复请求")
+                .accessibilityHint(status ?? "点击请求最新收益")
             }
             if family == .systemMedium {
                 HStack(alignment: .top, spacing: 20) {
@@ -154,7 +154,7 @@ struct MCDevIncomeWidget: Widget {
             IncomeWidgetView(entry: entry)
         }
         .configurationDisplayName("今日与昨日收益")
-        .description("手动刷新当前账号的今日与昨日 PE 钻石流水，含作品销售与联机大厅内购；五分钟内不重复请求。")
+        .description("手动刷新当前账号的今日与昨日 PE 钻石流水，含作品销售与联机大厅内购；没有刷新冷却。")
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }
