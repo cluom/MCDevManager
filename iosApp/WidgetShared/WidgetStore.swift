@@ -133,7 +133,9 @@ final class WidgetStore: @unchecked Sendable {
             try vault.write(credential)
             state.accountID = accountID
             state.revision = credential.revision
-            state.message = nil
+            // 正常的 Cookie 轮换不等于刷新成功，不能抹掉上次失败原因。
+            // 切换账号才清除旧账号提示；同账号的错误由下一次刷新结果更新。
+            if changedAccount { state.message = nil }
             try save(state)
             var details = state.diagnosticDetails()
             details.reason = changedAccount ? .accountChanged : .cookiesChanged

@@ -106,4 +106,8 @@ assert.ok(iosWorkflow.includes('runner.arch') && iosWorkflow.includes('steps.too
 assert.ok(iosWorkflow.includes('-configuration "$BUILD_CONFIGURATION"'));
 assert.ok(iosWorkflow.includes('build/Build/Products/$BUILD_CONFIGURATION-iphoneos/MCDevManagerMPR.app'));
 assert.ok(iosWorkflow.includes('-showBuildTimingSummary'));
+assert.ok(iosWorkflow.includes('default: Release'), 'regular sideload packages must default to Release');
+assert.ok(iosWorkflow.includes('zip -q -6 -r'), 'IPA must retain normal compression');
+const incomeAPI = fs.readFileSync(path.join(ios, 'WidgetShared/IncomeAPI.swift'), 'utf8');
+assert.ok(incomeAPI.includes('get("items/categories/pe/",'), 'resource list must use its canonical trailing slash URL');
 console.log('Xcode project syntax, ASCII registration names, Chinese localization, widget embedding, shared sources, signing and all 3 CI entry points: OK');

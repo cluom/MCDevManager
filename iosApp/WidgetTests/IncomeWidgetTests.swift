@@ -9,6 +9,52 @@ private final class MemoryVault: WidgetCredentialVault {
     func delete() throws { value = nil }
 }
 
+// 本地模拟实时收益页面用到的接口；禁止测试携带凭据访问实际网络。
+private final class RealtimeIncomeURLProtocol: URLProtocol {
+    private static let lock = NSLock()
+    private static var captured: [URLRequest] = []
+
+    static func reset() { lock.lock(); defer { lock.unlock() }; captured = [] }
+    static func requests() -> [URLRequest] { lock.lock(); defer { lock.unlock() }; return captured }
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func stopLoading() {}
+
+    override func startLoading() {
+        Self.lock.lock()
+        Self.captured.append(request)
+        Self.lock.unlock()
+        let url = request.url!
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)!
+        let begin = components.queryItems?.first { $0.name == "begin_time" }?.value
+        let today = begin == "2026-09-26T16:00:00.000Z"
+        let status: Int
+        let body: String
+        switch components.percentEncodedPath {
+        case "/items/categories/pe/":
+            status = 200
+            body = #"{"status":"ok","data":{"count":1,"item":[{"item_id":"123","online_time":"2026-08-01"}]}}"#
+        case "/goods/pe/summary":
+            status = 200
+            body = #"{"status":"ok","data":{"count":1,"items":[{"item_id":"123"}]}}"#
+        case "/items/categories/pe/123/incomes/":
+            status = 200
+            body = "{\"status\":\"ok\",\"data\":{\"total_diamonds\":\(today ? 12 : 7),\"total_points\":\(today ? 3 : 2)}}"
+        case "/items/categories/pe/123/lobby_incomes/":
+            status = 200
+            body = "{\"status\":\"ok\",\"data\":{\"total_diamonds\":\(today ? 5 : 4),\"total_points\":\(today ? 1 : 0)}}"
+        default:
+            // 复现日志中的缺尾斜杠响应；旧路径必须让端到端测试失败。
+            status = 308
+            body = "<html>Permanent Redirect</html>"
+        }
+        let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1", headerFields: nil)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(body.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+}
+
 final class IncomeWidgetTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
@@ -109,6 +155,21 @@ final class IncomeWidgetTests: XCTestCase {
         try store.complete(credential: old, snapshot: nil, message: "登录已过期")
         XCTAssertNil(try store.read().message)
         XCTAssertNil(try store.reserve(now: now.addingTimeInterval(50)))
+    }
+
+    func testCookieRotationPreservesFailureUntilNextSuccessfulRefresh() throws {
+        let (store, _, _) = try fixture()
+        try login(store)
+        let first = try XCTUnwrap(store.reserve(now: now))
+        try store.complete(credential: first, snapshot: nil, message: "数据未取全，保留上次结果")
+        try login(store, value: "rotated")
+        XCTAssertEqual(try store.read().message, "数据未取全，保留上次结果")
+        XCTAssertEqual(try store.read().refreshOutcome, .failed)
+        XCTAssertNil(try store.reserve(now: now.addingTimeInterval(100)))
+        let next = try XCTUnwrap(store.reserve(now: now.addingTimeInterval(300)))
+        try store.complete(credential: next, snapshot: snapshot(now), message: nil)
+        XCTAssertNil(try store.read().message)
+        XCTAssertEqual(try store.read().snapshot, snapshot(now))
     }
 
     func testMissingDataIsNotMistakenForCooldown() throws {
@@ -231,6 +292,42 @@ final class IncomeWidgetTests: XCTestCase {
         }
         XCTAssertThrowsError(try IncomeAPI.decode(Data(#"{"status":"no_login","data":"login"}"#.utf8)) as RealtimeTotal) { error in
             guard case IncomeWidgetError.loginExpired = error else { return XCTFail("Expected loginExpired") }
+        }
+    }
+
+    func testRealtimePageEndpointsLoadBothDaysWithoutRedirects() async throws {
+        RealtimeIncomeURLProtocol.reset()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [RealtimeIncomeURLProtocol.self]
+        let api = IncomeAPI(configuration: configuration)
+        let date = ISO8601DateFormatter().date(from: "2026-09-26T18:00:00Z")!
+        let credential = WidgetCredential(accountID: "test-account", revision: UUID(), cookies: ["S_INFO": "abc%2Bdef=="])
+        let result = try await api.load(credential: credential, now: date)
+        XCTAssertEqual(result.day, "2026-09-27")
+        XCTAssertEqual(result.today, IncomeTotal(diamonds: 17, points: 4))
+        XCTAssertEqual(result.yesterday, IncomeTotal(diamonds: 11, points: 2))
+        let requests = RealtimeIncomeURLProtocol.requests()
+        XCTAssertEqual(requests.count, 6) // 两个列表 + 两类收益各查两天。
+        let paths = requests.map { URLComponents(url: $0.url!, resolvingAgainstBaseURL: false)!.percentEncodedPath }
+        XCTAssertEqual(paths.filter { $0 == "/items/categories/pe/" }.count, 1)
+        XCTAssertEqual(paths.filter { $0 == "/goods/pe/summary" }.count, 1)
+        XCTAssertEqual(paths.filter { $0 == "/items/categories/pe/123/incomes/" }.count, 2)
+        XCTAssertEqual(paths.filter { $0 == "/items/categories/pe/123/lobby_incomes/" }.count, 2)
+        for request in requests {
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(request.url?.scheme, "https")
+            XCTAssertEqual(request.url?.host, "mc-launcher.webapp.163.com")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Cookie"), "S_INFO=abc%2Bdef==")
+            let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)!.queryItems!
+            let parameters = Dictionary(uniqueKeysWithValues: query.map { ($0.name, $0.value!) })
+            if parameters["begin_time"] != nil {
+                let begin = parameters["begin_time"]!
+                XCTAssertTrue(["2026-09-26T16:00:00.000Z", "2026-09-25T16:00:00.000Z"].contains(begin))
+                XCTAssertEqual(parameters["end_time"], begin == "2026-09-26T16:00:00.000Z"
+                    ? "2026-09-27T15:59:59.999Z" : "2026-09-26T15:59:59.999Z")
+            } else {
+                XCTAssertEqual(parameters, ["start": "0", "span": "2147483647"])
+            }
         }
     }
 

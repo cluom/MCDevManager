@@ -4,9 +4,11 @@ import Foundation
 final class IncomeAPI: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     private static let origin = URL(string: "https://mc-launcher.webapp.163.com/")!
     private let diagnostics: WidgetDiagnostics?
+    private let sessionConfiguration: URLSessionConfiguration
 
-    init(diagnostics: WidgetDiagnostics? = nil) {
+    init(diagnostics: WidgetDiagnostics? = nil, configuration: URLSessionConfiguration = .ephemeral) {
         self.diagnostics = diagnostics
+        self.sessionConfiguration = configuration
         super.init()
     }
 
@@ -20,7 +22,7 @@ final class IncomeAPI: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
 
     func load(credential: WidgetCredential, now: Date) async throws -> IncomeSnapshot {
         try WidgetCredential.validate(credential.cookies)
-        let config = URLSessionConfiguration.ephemeral
+        let config = sessionConfiguration.copy() as! URLSessionConfiguration
         config.httpCookieStorage = nil
         config.httpShouldSetCookies = false
         config.urlCache = nil
@@ -43,7 +45,9 @@ final class IncomeAPI: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
 
     private func fetch(session: URLSession, credential: WidgetCredential, now: Date) async throws -> IncomeSnapshot {
         let listQuery = [URLQueryItem(name: "start", value: "0"), URLQueryItem(name: "span", value: "2147483647")]
-        async let normal: ResourceList = get("items/categories/pe", endpoint: .resources, query: listQuery, session: session, credential: credential)
+        // 与实时收益页跳转后的规范地址一致：缺少末尾 / 会返回 308。
+        // 直接使用规范地址，仍禁止带 Cookie 跟随任何重定向。
+        async let normal: ResourceList = get("items/categories/pe/", endpoint: .resources, query: listQuery, session: session, credential: credential)
         async let lobby: LobbyList = get("goods/pe/summary", endpoint: .lobbyResources, query: listQuery, session: session, credential: credential)
         let (resources, lobbyResources) = try await (normal, lobby)
         diagnostics?.record(.sourcesLoaded, WidgetDiagnosticDetails(endpoint: .resources,
