@@ -71,3 +71,13 @@
 验证结果：`:shared:jvmTest` 共 91 项测试，0 失败、0 错误；`:desktopApp:packagePortable` 构建成功。未运行 Android/iOS 测试，也未用真实账号联网验收新版本。
 
 参考 [Ktor 3.5.0 HttpCookies](https://github.com/ktorio/ktor/blob/3.5.0/ktor-client/ktor-client-core/common/src/io/ktor/client/plugins/cookies/HttpCookies.kt) 和 [Cookie 编解码实现](https://github.com/ktorio/ktor/blob/3.5.0/ktor-http/common/src/io/ktor/http/Cookie.kt)。
+
+## 合并上游 v1.2.6（2026-09-27）
+
+- 合并 `upstream/mp-master` 的 `41b4331`，其中已包含我们的 PR #42（保留等号）和 #43（避免重复编码）。
+- 上游通用 Cookie 修复与本地增强版重叠；保留本地的可信 HTTPS 主机限制、删除/过期处理、账号绑定与增量持久化、脱敏诊断及小组件会话桥接，不重复叠加解析或编码。
+- 保留上游新增回归测试；空值测试沿用本地“删除已有 Cookie”的契约。本机 HTTP 往返测试仅在测试适配层映射可信地址，不放宽生产域名限制，也不连接真实账号接口。
+- 上游空白测试复现 Ktor 将分号前的填充空格保留到值中；解析前仅去掉键值片段末尾的空格/制表符，仍由 Ktor 解析属性，不解码 `%20` 等值内容。补充带编码空格和带填充的过期删除测试。
+- 分账算法和小组件手动刷新实现未改动；iOS `MARKETING_VERSION` 随上游同步为 `1.2.6`。
+
+验证：`:shared:jvmTest :desktopApp:compileKotlin --offline --console=plain` 成功，19 个测试套件共 118 项，0 失败、0 错误、0 跳过；iOS 版本工具 8 项测试与 `check-widget-project.mjs` 静态检查通过。本轮未运行 Android/iOS 原生构建或真机验收，未替换安装程序或触发发布。

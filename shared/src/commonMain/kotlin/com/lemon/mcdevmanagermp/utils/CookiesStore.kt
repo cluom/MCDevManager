@@ -32,8 +32,10 @@ open class SessionCookieStore {
         list.forEach { header ->
             val pair = header.substringBefore(';')
             if (pair.substringBefore('=').isBlank() || pair.indexOf('=') < 1) return@forEach
+            // Ktor 会保留分号前的尾随空白；仅去掉头字段填充，不解码或改写值内字符。
+            val normalizedHeader = pair.trimEnd(' ', '\t') + header.substring(pair.length)
             // 使用 HTTP 库解析，只按第一个等号分隔，并处理服务端删除指令。
-            val cookie = runCatching { parseServerSetCookieHeader(header) }.getOrNull()
+            val cookie = runCatching { parseServerSetCookieHeader(normalizedHeader) }.getOrNull()
                 ?: return@forEach
             addCookie(cookie)
         }
