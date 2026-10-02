@@ -124,7 +124,15 @@ assert.ok(widgetView.includes('.rotationEffect(.degrees(configuration.isOn ? 360
 assert.ok(widgetView.includes('.linear(duration: 0.8)'));
 assert.ok(!widgetView.includes('repeatForever'), 'widget animation must be finite');
 assert.ok(!widgetView.includes('五分钟'), 'manual refresh must not show the removed cooldown');
+assert.ok(!widgetView.includes('积分'), 'widget display must label points as emeralds');
+assert.ok(widgetView.includes('绿宝石'));
+const pageIntent = widgetView.slice(widgetView.indexOf('struct ChangeIncomePageIntent:'), widgetView.indexOf('struct IncomeWidgetView:'));
+assert.ok(pageIntent.includes('.setPage(') && pageIntent.includes('WidgetCenter.shared.reloadTimelines'));
+assert.ok(!/refreshManually|IncomeAPI|URLSession/.test(pageIntent), 'pagination must not request the network');
+assert.ok(widgetView.includes('Button(intent: ChangeIncomePageIntent('));
+assert.ok(widgetView.includes('layout.details(on: page, from: details)'));
 const incomeModels = fs.readFileSync(path.join(ios, 'WidgetShared/IncomeModels.swift'), 'utf8');
 assert.ok(!incomeModels.includes('minimumRefreshInterval'), 'manual refresh must not impose a fixed cooldown');
 console.log('Xcode project syntax, ASCII registration names, Chinese localization, widget embedding, shared sources, signing and all 3 CI entry points: OK');
 console.log('Cache-only timeline, manual-only network entry and optimistic one-turn refresh animation: OK');
+console.log('Cache-only overview/detail pagination and emerald labels: OK');

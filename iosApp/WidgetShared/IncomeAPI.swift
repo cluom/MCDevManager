@@ -56,10 +56,11 @@ final class IncomeAPI: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
             expectedCount: lobbyResources.count, actualCount: lobbyResources.items.count))
         let sources = try Self.sources(resources: resources, lobby: lobbyResources)
         var totals = [IncomeTotal(), IncomeTotal()]
+        var details: [String: IncomeDetail] = [:]
         // 最多四个并发请求，整个刷新有 20 秒截止时间；任一失败不保存残缺总额。
         let jobs = sources.flatMap { source in [0, 1].map { (source, $0) } }
         diagnostics?.record(.sourcesLoaded, WidgetDiagnosticDetails(sourceCount: sources.count, jobCount: jobs.count))
-        try await withThrowingTaskGroup(of: (Int, IncomeTotal).self) { group in
+        try await withThrowingTaskGroup(of: (IncomeSource, Int, IncomeTotal).self) { group in
             var next = 0
             func enqueue(_ index: Int) {
                 let (source, dayOffset) = jobs[index]
@@ -71,16 +72,27 @@ final class IncomeAPI: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
                         URLQueryItem(name: "begin_time", value: begin),
                         URLQueryItem(name: "end_time", value: end)
                     ], session: session, credential: credential)
-                    return (dayOffset, IncomeTotal(diamonds: result.total_diamonds, points: result.total_points))
+                    return (source, dayOffset, IncomeTotal(diamonds: result.total_diamonds, points: result.total_points))
                 }
             }
             while next < min(4, jobs.count) { enqueue(next); next += 1 }
-            while let (index, total) = try await group.next() {
+            while let (source, index, total) = try await group.next() {
                 try totals[index].add(total)
+                if index == 0 {
+                    var detail = details[source.id] ?? IncomeDetail(itemID: source.id, name: source.name, total: IncomeTotal())
+                    try detail.total.add(total)
+                    details[source.id] = detail
+                }
                 if next < jobs.count { enqueue(next); next += 1 }
             }
         }
-        return IncomeSnapshot(day: BeijingDay.key(now), today: totals[0], yesterday: totals[1], updatedAt: now)
+        let todayDetails = details.values.filter { $0.total.diamonds != 0 || $0.total.points != 0 }.sorted {
+            if $0.total.diamonds != $1.total.diamonds { return $0.total.diamonds > $1.total.diamonds }
+            if $0.total.points != $1.total.points { return $0.total.points > $1.total.points }
+            return $0.itemID < $1.itemID
+        }
+        return IncomeSnapshot(day: BeijingDay.key(now), today: totals[0], yesterday: totals[1], updatedAt: now,
+                              todayDetails: todayDetails)
     }
 
     private func get<T: Decodable>(_ path: String, endpoint: WidgetEndpoint, query: [URLQueryItem], session: URLSession,
@@ -128,9 +140,16 @@ final class IncomeAPI: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
         guard resources.count == resources.item.count, lobby.count == lobby.items.count else {
             throw IncomeWidgetError.invalidResponse
         }
+        var names: [String: String] = [:]
+        // 优先普通作品名称，确保销售与大厅请求完成顺序不会影响同一作品的显示名称。
+        for (id, name) in resources.item.map({ ($0.item_id, $0.item_name) }) + lobby.items.map({ ($0.item_id, $0.item_name) }) {
+            if names[id] == nil, let name = name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+                names[id] = name
+            }
+        }
         let normal = resources.item.filter { !($0.online_time ?? "").isEmpty && $0.online_time != "UNKNOWN" }
-            .map { IncomeSource(id: $0.item_id, lobby: false) }
-        let goods = lobby.items.map { IncomeSource(id: $0.item_id, lobby: true) }
+            .map { IncomeSource(id: $0.item_id, lobby: false, name: names[$0.item_id] ?? "作品 \($0.item_id)") }
+        let goods = lobby.items.map { IncomeSource(id: $0.item_id, lobby: true, name: names[$0.item_id] ?? "作品 \($0.item_id)") }
         let sources = normal + goods
         guard sources.allSatisfy({ !$0.id.isEmpty && $0.id.utf8.allSatisfy { (48...57).contains($0) } }) else {
             throw IncomeWidgetError.invalidResponse
@@ -143,12 +162,13 @@ final class IncomeAPI: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
 struct IncomeSource: Hashable {
     let id: String
     let lobby: Bool
+    let name: String
     var path: String { "items/categories/pe/\(id)/\(lobby ? "lobby_incomes" : "incomes")/" }
 }
 struct ResourceList: Decodable { let count: Int; let item: [ResourceRow] }
-struct ResourceRow: Decodable { let item_id: String; let online_time: String? }
+struct ResourceRow: Decodable { let item_id: String; let online_time: String?; var item_name: String? = nil }
 struct LobbyList: Decodable { let count: Int; let items: [LobbyRow] }
-struct LobbyRow: Decodable { let item_id: String }
+struct LobbyRow: Decodable { let item_id: String; var item_name: String? = nil }
 struct RealtimeTotal: Decodable { let total_diamonds: Int64; let total_points: Int64 }
 
 private struct Envelope<T: Decodable>: Decodable {

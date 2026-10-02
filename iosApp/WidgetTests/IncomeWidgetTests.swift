@@ -33,10 +33,10 @@ private final class RealtimeIncomeURLProtocol: URLProtocol {
         switch components.percentEncodedPath {
         case "/items/categories/pe/":
             status = 200
-            body = #"{"status":"ok","data":{"count":1,"item":[{"item_id":"123","online_time":"2026-08-01"}]}}"#
+            body = #"{"status":"ok","data":{"count":1,"item":[{"item_id":"123","online_time":"2026-08-01","item_name":"测试模组"}]}}"#
         case "/goods/pe/summary":
             status = 200
-            body = #"{"status":"ok","data":{"count":1,"items":[{"item_id":"123"}]}}"#
+            body = #"{"status":"ok","data":{"count":1,"items":[{"item_id":"123","item_name":"测试模组大厅"}]}}"#
         case "/items/categories/pe/123/incomes/":
             status = 200
             body = "{\"status\":\"ok\",\"data\":{\"total_diamonds\":\(today ? 12 : 7),\"total_points\":\(today ? 3 : 2)}}"
@@ -417,6 +417,74 @@ final class IncomeWidgetTests: XCTestCase {
         XCTAssertNil(cached.total(for: BeijingDay.key(now.addingTimeInterval(-172800))))
     }
 
+    func testDetailsKeepTheirDateAndLegacySnapshotsRemainReadable() throws {
+        let detail = IncomeDetail(itemID: "1", name: "模组一", total: IncomeTotal(diamonds: 50, points: 3))
+        var current = snapshot(now)
+        current.todayDetails = [detail]
+        XCTAssertEqual(current.details(for: BeijingDay.key(now)), [detail])
+        XCTAssertNil(current.details(for: BeijingDay.key(BeijingDay.start(now).addingTimeInterval(86400))))
+        let legacyJSON = try JSONEncoder().encode(snapshot(now))
+        let legacy = try JSONDecoder().decode(IncomeSnapshot.self, from: legacyJSON)
+        XCTAssertNil(legacy.todayDetails)
+        XCTAssertEqual(legacy.today, current.today)
+        let oldState = try JSONDecoder().decode(WidgetState.self, from: Data(#"{"accountID":"7","attempts":{}}"#.utf8))
+        XCTAssertEqual(oldState.page(for: .small, at: now), 0)
+    }
+
+    func testDetailPaginationIncludesEveryItemAndClampsStalePages() {
+        let details = (1...7).map { IncomeDetail(itemID: String($0), name: "模组\($0)", total: IncomeTotal(diamonds: Int64($0))) }
+        XCTAssertEqual(IncomeWidgetLayout.small.pageCount(detailCount: 7), 5)
+        XCTAssertEqual(IncomeWidgetLayout.medium.pageCount(detailCount: 7), 4)
+        for layout in [IncomeWidgetLayout.small, .medium] {
+            let count = layout.pageCount(detailCount: details.count)
+            XCTAssertEqual((1..<count).flatMap { layout.details(on: $0, from: details) }, details)
+            XCTAssertTrue(layout.details(on: 0, from: details).isEmpty)
+            XCTAssertEqual(layout.clamp(-1, detailCount: 7), 0)
+            XCTAssertEqual(layout.clamp(Int.max, detailCount: 7), count - 1)
+            XCTAssertEqual(layout.pageCount(detailCount: 0), 2)
+            XCTAssertTrue(layout.details(on: 1, from: []).isEmpty)
+        }
+    }
+
+    func testPageChangesPersistWithoutReservingOrChangingRefreshState() throws {
+        let (store, dir, vault) = try fixture()
+        try login(store)
+        let reservation = try XCTUnwrap(store.reserve(now: now))
+        try store.setPage(1, layout: .medium, expectedAccountID: "7", now: now)
+        let changing = try store.read()
+        XCTAssertEqual(changing.page(for: .medium, at: now), 1)
+        XCTAssertEqual(changing.page(for: .small, at: now), 0)
+        XCTAssertEqual(changing.refreshOutcome, .inFlight)
+        XCTAssertEqual(changing.refreshAttemptID, reservation.attemptID)
+        XCTAssertEqual(changing.attempts, ["7": now])
+        try store.complete(reservation: reservation, snapshot: snapshot(now), message: nil)
+        let restarted = try WidgetStore(directory: dir, vault: vault)
+        XCTAssertEqual(try restarted.read().page(for: .medium, at: now), 1)
+        XCTAssertEqual(try restarted.read().snapshot, snapshot(now))
+        XCTAssertEqual(try restarted.read().refreshOutcome, .succeeded)
+    }
+
+    func testAccountSwitchClearsPagesAndRejectsOldPageButtons() throws {
+        let (store, _, _) = try fixture()
+        try login(store)
+        try store.setPage(1, layout: .small, expectedAccountID: "7", now: now)
+        try login(store, id: "8")
+        try store.setPage(1, layout: .small, expectedAccountID: "7", now: now)
+        XCTAssertEqual(try store.read().page(for: .small, at: now), 0)
+        XCTAssertNil(try store.read().presentationPages)
+        XCTAssertTrue(try store.read().attempts.isEmpty)
+    }
+
+    func testPagesClampWhenNextDayHasNoCachedDetails() {
+        var current = snapshot(now)
+        current.todayDetails = (1...7).map { IncomeDetail(itemID: String($0), name: "模组\($0)", total: IncomeTotal()) }
+        let state = WidgetState(snapshot: current, presentationPages: ["small": 4])
+        XCTAssertEqual(state.page(for: .small, at: now), 4)
+        let tomorrow = BeijingDay.start(now).addingTimeInterval(86400)
+        XCTAssertEqual(state.page(for: .small, at: tomorrow), 1)
+        XCTAssertNil(state.snapshot?.details(for: BeijingDay.key(tomorrow)))
+    }
+
     func testAPIRequiresCompleteTotalsAndHandlesExpiredStatus() throws {
         let good = Data(#"{"status":"ok","data":{"total_diamonds":12,"total_points":3}}"#.utf8)
         let total: RealtimeTotal = try IncomeAPI.decode(good)
@@ -441,6 +509,7 @@ final class IncomeWidgetTests: XCTestCase {
         XCTAssertEqual(result.day, "2026-09-27")
         XCTAssertEqual(result.today, IncomeTotal(diamonds: 17, points: 4))
         XCTAssertEqual(result.yesterday, IncomeTotal(diamonds: 11, points: 2))
+        XCTAssertEqual(result.todayDetails, [IncomeDetail(itemID: "123", name: "测试模组", total: result.today)])
         let requests = RealtimeIncomeURLProtocol.requests()
         XCTAssertEqual(requests.count, 6) // 两个列表 + 两类收益各查两天。
         let paths = requests.map { URLComponents(url: $0.url!, resolvingAgainstBaseURL: false)!.percentEncodedPath }
@@ -475,6 +544,7 @@ final class IncomeWidgetTests: XCTestCase {
         let sources = try IncomeAPI.sources(resources: resources, lobby: LobbyList(count: 1, items: [LobbyRow(item_id: "1")]))
         XCTAssertEqual(sources.count, 2)
         XCTAssertEqual(Set(sources.map(\.lobby)), [true, false])
+        XCTAssertTrue(sources.allSatisfy { $0.name == "作品 1" })
         XCTAssertThrowsError(try IncomeAPI.sources(resources: ResourceList(count: 2, item: []), lobby: LobbyList(count: 0, items: [])))
         XCTAssertThrowsError(try IncomeAPI.sources(resources: ResourceList(count: 0, item: []), lobby: LobbyList(count: 1, items: [LobbyRow(item_id: "../bad")])))
     }

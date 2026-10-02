@@ -57,16 +57,48 @@ struct WidgetRefreshReservation {
     let attemptID: UUID
 }
 
+struct IncomeDetail: Codable, Equatable, Identifiable {
+    let itemID: String
+    let name: String
+    var total: IncomeTotal
+    var id: String { itemID }
+}
+
 struct IncomeSnapshot: Codable, Equatable {
     let day: String
     let today: IncomeTotal
     let yesterday: IncomeTotal
     let updatedAt: Date
+    // nil 表示旧缓存没有明细，空数组表示已查询但今日没有产生收益的作品。
+    var todayDetails: [IncomeDetail]? = nil
+
+    func details(for dayKey: String) -> [IncomeDetail]? {
+        dayKey == day ? todayDetails : nil
+    }
 
     func total(for dayKey: String) -> IncomeTotal? {
         if dayKey == day { return today }
         if dayKey == BeijingDay.key(BeijingDay.start(updatedAt).addingTimeInterval(-86400)) { return yesterday }
         return nil
+    }
+}
+
+enum IncomeWidgetLayout: String {
+    case small, medium
+    var rowsPerPage: Int { self == .small ? 2 : 3 }
+
+    func pageCount(detailCount: Int) -> Int {
+        1 + max(1, detailCount / rowsPerPage + (detailCount % rowsPerPage == 0 ? 0 : 1))
+    }
+
+    func clamp(_ page: Int, detailCount: Int) -> Int {
+        min(max(0, page), pageCount(detailCount: detailCount) - 1)
+    }
+
+    func details(on page: Int, from details: [IncomeDetail]) -> [IncomeDetail] {
+        let page = clamp(page, detailCount: details.count)
+        guard page > 0 else { return [] }
+        return Array(details.dropFirst((page - 1) * rowsPerPage).prefix(rowsPerPage))
     }
 }
 
@@ -83,6 +115,13 @@ struct WidgetState: Codable {
     var refreshOutcome: WidgetRefreshOutcome?
     var refreshRevision: UUID?
     var refreshAttemptID: UUID?
+    // 小号与中号分别记录页码；翻页不改变请求状态或缓存金额。
+    var presentationPages: [String: Int]?
+
+    func page(for layout: IncomeWidgetLayout, at date: Date) -> Int {
+        let count = snapshot?.details(for: BeijingDay.key(date))?.count ?? 0
+        return layout.clamp(presentationPages?[layout.rawValue] ?? 0, detailCount: count)
+    }
 
     func canRefresh(accountID: String, now: Date) -> Bool {
         self.accountID == accountID && !isRefreshing(at: now)

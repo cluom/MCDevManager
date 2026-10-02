@@ -101,6 +101,19 @@ final class WidgetStore: @unchecked Sendable {
 
     func read() throws -> WidgetState { try locked { try readState() } }
 
+    /// 只读缓存并保存展示页码；不读取凭据、不请求网络，也不覆盖并发刷新状态。
+    func setPage(_ page: Int, layout: IncomeWidgetLayout, expectedAccountID: String, now: Date = Date()) throws {
+        try locked {
+            var state = try readState()
+            guard (state.accountID ?? "") == expectedAccountID else { return }
+            let count = state.snapshot?.details(for: BeijingDay.key(now))?.count ?? 0
+            var pages = state.presentationPages ?? [:]
+            pages[layout.rawValue] = layout.clamp(page, detailCount: count)
+            state.presentationPages = pages
+            try save(state)
+        }
+    }
+
     /// 返回是否需要让系统重载显示。会话仅单向从主程序导出，扩展从不回写主程序数据库。
     func synchronize(accountID: String, cookiesJSON: String) throws -> Bool {
         try locked {
@@ -115,6 +128,7 @@ final class WidgetStore: @unchecked Sendable {
                 state.refreshOutcome = nil
                 state.refreshRevision = nil
                 state.refreshAttemptID = nil
+                state.presentationPages = nil
                 try save(state)
             }
             if accountID.isEmpty {
