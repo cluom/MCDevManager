@@ -131,7 +131,8 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: ios-ipa
+          # 下载 ZIP 使用唯一构建编号，重跑也不会与旧包重名。
+          name: ios-ipa-${{ steps.vars.outputs.version }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: MCDevManagerMP-V${{ steps.vars.outputs.version }}-${{ env.BUILD_CONFIGURATION }}-ios-arm64.ipa
           compression-level: 0
 

@@ -65,7 +65,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: android-apk
+          name: android-apk-${{ steps.vars.outputs.version }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: MCDevManagerMP-V${{ steps.vars.outputs.version }}-android.apk
 
   # ============================================================
@@ -106,7 +106,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: macos-dmg
+          name: macos-dmg-${{ steps.vars.outputs.version }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: MCDevManagerMP-V${{ steps.vars.outputs.version }}-macos.dmg
 
   # ============================================================
@@ -154,13 +154,13 @@ jobs:
       - name: Upload MSI
         uses: actions/upload-artifact@v4
         with:
-          name: windows-msi
+          name: windows-msi-${{ steps.vars.outputs.version }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: MCDevManagerMP-V${{ steps.vars.outputs.version }}-windows-x64.msi
 
       - name: Upload Portable ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: windows-portable
+          name: windows-portable-${{ steps.vars.outputs.version }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: MCDevManagerMP-V${{ steps.vars.outputs.version }}-windows-x64-portable.zip
 
   # ============================================================
@@ -201,7 +201,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: linux-deb
+          name: linux-deb-${{ steps.vars.outputs.version }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: MCDevManagerMP-V${{ steps.vars.outputs.version }}-linux-x64.deb
 
   # ============================================================
@@ -272,7 +272,7 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: ios-ipa
+          name: ios-ipa-${{ steps.vars.outputs.version }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: MCDevManagerMP-V${{ steps.vars.outputs.version }}-ios-arm64.ipa
 
   # ============================================================
