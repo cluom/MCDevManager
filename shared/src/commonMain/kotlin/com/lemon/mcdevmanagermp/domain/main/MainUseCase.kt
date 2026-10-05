@@ -3,6 +3,7 @@ package com.lemon.mcdevmanagermp.domain.main
 import com.lemon.mcdevmanagermp.data.common.NetworkState
 import com.lemon.mcdevmanagermp.data.consts.CookiesExpiredException
 import com.lemon.mcdevmanagermp.data.consts.LoginException
+import com.lemon.mcdevmanagermp.data.vo.netease.analyze.ResAnalyzeData
 import com.lemon.mcdevmanagermp.data.vo.netease.user.LevelInfoVO
 import com.lemon.mcdevmanagermp.data.vo.netease.user.OverviewVO
 import com.lemon.mcdevmanagermp.data.vo.netease.user.UserInfoVO
@@ -209,14 +210,16 @@ class MainUseCase(
 
     private suspend fun getOneMonthComponentDiamonds(year: Int, month: Int): MonthDiamondData =
         coroutineScope {
-            val normalResources = async { getResourceListUseCase("pe", onlineOnly = true) }
+            val normalResources = async {
+                getResourceListUseCase("pe", onlineOnly = true, excludePrerequisites = true)
+            }
             val lobbyResources = async { analyzeRepository.getLobbyIncomeResources() }
             val resList = when (val resources = normalResources.await()) {
                 is NetworkState.Success -> resources.data ?: emptyList()
                 is NetworkState.Error -> emptyList()
             }
             val lobbyResList = when (val resources = lobbyResources.await()) {
-                is NetworkState.Success -> resources.data?.items ?: emptyList()
+                is NetworkState.Success -> resources.data?.items.orEmpty()
                 is NetworkState.Error -> emptyList()
             }
             val (startDate, endDate) = monthDateRange(year, month)
@@ -248,20 +251,30 @@ class MainUseCase(
 
             val lobbyData = lobbyResList.map { res ->
                 async {
+                    // 查询使用商品 ID，分账仍归属于作品 ID，不按可能重名的作品名分组。
+                    val goodsIds = when (val goods = analyzeRepository.getLobbyGoodsList(res.itemId)) {
+                        is NetworkState.Success -> goods.data?.goods.orEmpty()
+                            .map { it.goodsId }.filter(String::isNotBlank).distinct()
+                        is NetworkState.Error -> emptyList()
+                    }
+                    if (goodsIds.isEmpty()) {
+                        return@async ComponentDiamondData(res.itemId, res.itemName, 0.0, null)
+                    }
                     val result = analyzeRepository.getDayDetail(
                         platform = "pe",
                         category = "pe",
                         startDate = startDateParam,
                         endDate = endDateParam,
-                        itemListStr = res.itemId,
+                        itemListStr = goodsIds.joinToString(","),
                         isLobby = true
                     )
                     if (result is NetworkState.Success) {
-                        val dayData = result.data?.data.orEmpty()
+                        val goodsToOwner = goodsIds.associateWith { res.itemId }
+                        val dayData = result.data?.data.orEmpty().filter { it.iid in goodsToOwner }
                         ComponentDiamondData(
                             itemId = res.itemId,
                             moduleName = res.itemName,
-                            diamonds = dayData.sumOf { it.diamond.toDouble() },
+                            diamonds = aggregateGoodsDiamondsByOwner(dayData, goodsToOwner)[res.itemId] ?: 0.0,
                             dataThroughDate = dayData.mapNotNull { parseDateParamOrNull(it.dateId) }.maxOrNull()
                         )
                     } else {
@@ -335,3 +348,18 @@ private fun parseDateParamOrNull(value: String): LocalDate? {
     val isoDate = "${value.substring(0, 4)}-${value.substring(4, 6)}-${value.substring(6, 8)}"
     return runCatching { LocalDate.parse(isoDate) }.getOrNull()
 }
+
+/**
+ * 把商品维度的销售明细按所属作品累加：作品键 → 该作品下全部商品的钻石之和。
+ *
+ * @param rows 商品口径销售明细（每行的 [ResAnalyzeData.iid] 是商品 ID）
+ * @param goodsToOwner 商品 ID → 作品键（分账使用作品 ID）
+ */
+internal fun aggregateGoodsDiamondsByOwner(
+    rows: List<ResAnalyzeData>,
+    goodsToOwner: Map<String, String>
+): Map<String, Double> =
+    rows.mapNotNull { row ->
+        goodsToOwner[row.iid]?.let { it to row.diamond.toDouble() }
+    }.groupBy({ it.first }, { it.second })
+        .mapValues { (_, values) -> values.sum() }
