@@ -81,3 +81,15 @@
 - 分账算法和小组件手动刷新实现未改动；iOS `MARKETING_VERSION` 随上游同步为 `1.2.6`。
 
 验证：`:shared:jvmTest :desktopApp:compileKotlin --offline --console=plain` 成功，19 个测试套件共 118 项，0 失败、0 错误、0 跳过；iOS 版本工具 8 项测试与 `check-widget-project.mjs` 静态检查通过。本轮未运行 Android/iOS 原生构建或真机验收，未替换安装程序或触发发布。
+
+## 合并上游 v1.2.7（2026-10-05）
+
+- 合并稳定分支 `upstream/mp-master` 的 `3bea84e`，合并提交为 `e7bfcc0`。包含前置模组作品创建、剔除前置模组的数据统计、富文本提交修复、联机大厅商品查看和商品口径收益统计。
+- Cookie 仓库同时保留本地账号绑定、增量持久化与小组件会话同步，以及上游退出/切换账号时清理 `MCConstsCache` 的逻辑。
+- 首页大厅收益先读取作品下的商品 ID，再查询商品销售明细；累计结果仍以所属作品 ID 作为分账键，保留周期进度、官方月账单、人员权重和同名作品隔离。大厅商品查询失败沿用原有零值回退，不因此宣称所有收益已真实验收。
+- 保留小组件纯手动无冷却刷新、今日明细翻页及绿宝石文案；iOS 包内版本同步为 `1.2.7`。
+- Windows 验证：139 项 JVM 测试、8 项 iOS 版本工具测试通过，工程静态检查和 `packagePortable` 成功。Windows 未运行 macOS 原生测试，Swift 验证由云端执行。
+- Windows 程序已替换并重新启动：`D:\software\MCDevManager`。替换前关闭旧进程，完整备份到 `D:\software\MCDevManager-backups\before-v1.2.7-20261005-211509`，包含旧程序、账号数据库及日志。覆盖时排除 `.data`、`logs`、`downloads`、`.patch_temp`；启动前核对原数据文件哈希不变，新配置与业务 JAR 匹配构建产物。
+- 便携包：`desktopApp/build/release/portable/MCDevManager-1.2.7-portable.zip`，133320119 字节，SHA-256 `4cb2fe674c2e1f71ba29d5cee69bc38baca79f0131d3a3af35c77ed553a806b9`。
+- 如需回滚：先关闭客户端，再从上述备份恢复程序文件，继续排除用户数据目录；不要将旧数据库覆盖当前数据库，除非用户明确要求恢复数据。
+- iOS 已触发 [iOS Build #9](https://github.com/cluom/MCDevManager/actions/runs/37314981699)，构建源码固定为 `e7bfcc0`，配置 Release，文件标记 `1.2.7-widget-pages`。记录时小组件测试已通过、IPA 尚在编译；完成状态以构建页面及产物校验为准，不把已启动构建写成打包完成。
