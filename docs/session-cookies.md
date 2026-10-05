@@ -92,4 +92,6 @@
 - Windows 程序已替换并重新启动：`D:\software\MCDevManager`。替换前关闭旧进程，完整备份到 `D:\software\MCDevManager-backups\before-v1.2.7-20261005-211509`，包含旧程序、账号数据库及日志。覆盖时排除 `.data`、`logs`、`downloads`、`.patch_temp`；启动前核对原数据文件哈希不变，新配置与业务 JAR 匹配构建产物。
 - 便携包：`desktopApp/build/release/portable/MCDevManager-1.2.7-portable.zip`，133320119 字节，SHA-256 `4cb2fe674c2e1f71ba29d5cee69bc38baca79f0131d3a3af35c77ed553a806b9`。
 - 如需回滚：先关闭客户端，再从上述备份恢复程序文件，继续排除用户数据目录；不要将旧数据库覆盖当前数据库，除非用户明确要求恢复数据。
-- iOS 已触发 [iOS Build #9](https://github.com/cluom/MCDevManager/actions/runs/37314981699)，构建源码固定为 `e7bfcc0`，配置 Release，文件标记 `1.2.7-widget-pages`。记录时小组件测试已通过、IPA 尚在编译；完成状态以构建页面及产物校验为准，不把已启动构建写成打包完成。
+- Windows 最终校验：276 个程序文件的 SHA-256 与构建目录逐一相符；便携 ZIP 完整性检查通过，未包含 `.data`、日志或下载目录。内嵌 `BuiltInVersion.VERSION=1.2.7`，客户端窗口正常响应，重新启动后的近期日志未发现 ERROR/FATAL。
+- [iOS Build #9](https://github.com/cluom/MCDevManager/actions/runs/37314981699) 已成功完成，构建源码固定为 `e7bfcc0`，配置 Release，文件标记 `1.2.7-widget-pages`。小组件 Swift 测试、Xcode 编译、扩展/共享分组/ad-hoc 权限和包内版本校验均通过；构建总耗时 30 分 50 秒，编译 1693 秒。原生缓存未精确命中，不据此宣称热缓存加速已验证。
+- [iOS 下载产物](https://github.com/cluom/MCDevManager/actions/runs/37314981699/artifacts/11349007287)：`ios-ipa`，35516817 字节，GitHub 记录的产物 SHA-256 为 `d0b30216cfd87e1f2091ecf593bd892d72c09d63388b0a5630ff6a12fe6f83b9`。下载包内为 `MCDevManagerMP-V1.2.7-widget-pages-Release-ios-arm64.ipa`，包内版本 `1.2.7`、构建号 `9`。此次未替用户在手机安装或真机验收，安装仍需自行重签并保留小组件扩展。
