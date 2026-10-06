@@ -4,16 +4,12 @@ import androidx.room.Dao
 import androidx.room.Query
 import androidx.room.Upsert
 import com.lemon.mcdevmanagermp.data.db.entity.AccountEntity
-import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface AccountDao {
 
     @Query("SELECT * FROM account ORDER BY lastLoginTime DESC")
     suspend fun getAllAccounts(): List<AccountEntity>
-
-    @Query("SELECT * FROM account ORDER BY lastLoginTime DESC")
-    fun observeAllAccounts(): Flow<List<AccountEntity>>
 
     @Query("SELECT * FROM account ORDER BY lastLoginTime DESC LIMIT 1")
     suspend fun getLastUsedAccount(): AccountEntity?

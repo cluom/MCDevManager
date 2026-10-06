@@ -22,17 +22,7 @@ node_modules/
 
 CLAUDE.md
 AGENTS.md
-!/AGENTS.md
 .claude/
 .agents/
-!.agents/
-.agents/*
-!.agents/skills/
-.agents/skills/*
-!.agents/skills/mcdevmanager-windows-widgets/
 .codegraph/
 androidApp/release/
-**/bin/
-**/obj/
-/windowsWidgets/dist/
-*.pfx
