@@ -24,6 +24,11 @@ CLAUDE.md
 AGENTS.md
 .claude/
 .agents/
+!.agents/
+.agents/*
+!.agents/skills/
+.agents/skills/*
+!.agents/skills/mcdevmanager-windows-widgets/
 .codegraph/
 androidApp/release/
 **/bin/

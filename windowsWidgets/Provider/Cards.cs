@@ -45,6 +45,7 @@ public static class Cards
             if (definition == "Overview")
             {
                 var o = data.Overview ?? [];
+                var captured = data.FetchedAt.LocalDateTime;
                 string F(string key) => o.GetValueOrDefault(key)?.ToString("N0") ?? "暂无数据";
                 JsonObject Tile(string title, string value, string comparison) => new()
                 {
@@ -52,11 +53,11 @@ public static class Cards
                         new JsonObject { ["type"] = "TextBlock", ["text"] = value, ["size"] = "large", ["weight"] = "bolder", ["wrap"] = true }, Text(comparison, "small", true))
                 };
                 body.Add(new JsonObject { ["type"] = "ColumnSet", ["columns"] = new JsonArray(
-                    Tile("本月收益 · 钻石", F("this_month_diamond"), "上月 " + F("last_month_diamond")),
-                    Tile("本月下载", F("this_month_download"), "上月 " + F("last_month_download"))) });
+                    Tile($"{captured:yyyy-MM} 收益 · 钻石", F("this_month_diamond"), $"{captured.AddMonths(-1):MM}月 " + F("last_month_diamond")),
+                    Tile($"{captured:yyyy-MM} 下载", F("this_month_download"), $"{captured.AddMonths(-1):MM}月 " + F("last_month_download"))) });
                 body.Add(new JsonObject { ["type"] = "ColumnSet", ["columns"] = new JsonArray(
-                    Tile("昨日收益 · 钻石", F("yesterday_diamond"), "14 日均 " + F("days_14_average_diamond")),
-                    Tile("昨日下载", F("yesterday_download"), "14 日均 " + F("days_14_average_download"))) });
+                    Tile($"{captured.AddDays(-1):MM-dd} 收益 · 钻石", F("yesterday_diamond"), "14 日均 " + F("days_14_average_diamond")),
+                    Tile($"{captured.AddDays(-1):MM-dd} 下载", F("yesterday_download"), "14 日均 " + F("days_14_average_download"))) });
             }
             else
             {

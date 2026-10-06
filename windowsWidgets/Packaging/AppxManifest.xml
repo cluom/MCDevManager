@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+ xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+ xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+ xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
+ xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4"
+ xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
+ xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+ IgnorableNamespaces="uap uap3 uap5 desktop4 com rescap">
+ <Identity Name="Cluom.MCDevManager.Widgets" Publisher="CN=cluom.MCDevManager" Version="1.0.0.0" ProcessorArchitecture="x64" />
+ <Properties><DisplayName>MCDevManager 数据小组件</DisplayName><PublisherDisplayName>cluom</PublisherDisplayName><Logo>Assets\Logo50.png</Logo></Properties>
+ <Dependencies><TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.22000.0" MaxVersionTested="10.0.26100.0" /></Dependencies>
+ <Resources><Resource Language="zh-cn" /></Resources>
+ <Applications>
+  <Application Id="Widgets" Executable="Provider\MCDevManager.Widgets.exe" EntryPoint="Windows.FullTrustApplication">
+   <uap:VisualElements DisplayName="MCDevManager 数据小组件" Description="独立数据追踪、首页总览与多维趋势"
+    Square150x150Logo="Assets\Logo150.png" Square44x44Logo="Assets\Logo44.png" BackgroundColor="#543B95" />
+   <Extensions>
+    <com:Extension Category="windows.comServer"><com:ComServer>
+     <com:ExeServer Executable="Provider\MCDevManager.Widgets.exe" Arguments="--provider" DisplayName="MCDevManager Widgets">
+      <com:Class Id="A1E7D097-354C-4B6A-8BB1-F42A3877B596" DisplayName="MCDevManager Widgets" />
+     </com:ExeServer>
+    </com:ComServer></com:Extension>
+    <uap5:Extension Category="windows.appExecutionAlias" Executable="Provider\MCDevManager.Widgets.exe" EntryPoint="Windows.FullTrustApplication">
+     <uap5:AppExecutionAlias desktop4:Subsystem="windows"><uap5:ExecutionAlias Alias="MCDevManagerWidgetBridge.exe" /></uap5:AppExecutionAlias>
+    </uap5:Extension>
+    <uap3:Extension Category="windows.appExtension">
+     <uap3:AppExtension Name="com.microsoft.windows.widgets" DisplayName="MCDevManager" Id="MCDevManagerWidgets" PublicFolder="Public">
+      <uap3:Properties><WidgetProvider>
+       <ProviderIcons><Icon Path="Assets\Logo50.png" /></ProviderIcons>
+       <Activation><CreateInstance ClassId="A1E7D097-354C-4B6A-8BB1-F42A3877B596" /></Activation>
+       <Definitions>
+        <Definition Id="Overview" DisplayName="MCDevManager 收益与下载总览" Description="本月、上月、昨日与14日均数据" AllowMultiple="true" IsCustomizable="true">
+         <Capabilities><Capability><Size Name="medium" /></Capability><Capability><Size Name="large" /></Capability></Capabilities>
+         <ThemeResources><Icons><Icon Path="Assets\Logo44.png" /></Icons><Screenshots><Screenshot Path="Assets\OverviewPreview.png" DisplayAltText="首页四项数据示意" /></Screenshots></ThemeResources>
+        </Definition>
+        <Definition Id="AccountTrend" DisplayName="MCDevManager 账号多维趋势" Description="多选指标，同图彩色折线" AllowMultiple="true" IsCustomizable="true">
+         <Capabilities><Capability><Size Name="medium" /></Capability><Capability><Size Name="large" /></Capability></Capabilities>
+         <ThemeResources><Icons><Icon Path="Assets\Logo44.png" /></Icons><Screenshots><Screenshot Path="Assets\TrendPreview.png" DisplayAltText="账号同图多条彩色趋势线示意" /></Screenshots></ThemeResources>
+        </Definition>
+        <Definition Id="ModTrend" DisplayName="MCDevManager 模组多维趋势" Description="指定模组、日期范围与多个指标" AllowMultiple="true" IsCustomizable="true">
+         <Capabilities><Capability><Size Name="medium" /></Capability><Capability><Size Name="large" /></Capability></Capabilities>
+         <ThemeResources><Icons><Icon Path="Assets\Logo44.png" /></Icons><Screenshots><Screenshot Path="Assets\TrendPreview.png" DisplayAltText="指定模组同图多维趋势示意" /></Screenshots></ThemeResources>
+        </Definition>
+       </Definitions>
+      </WidgetProvider></uap3:Properties>
+     </uap3:AppExtension>
+    </uap3:Extension>
+   </Extensions>
+  </Application>
+ </Applications>
+ <Capabilities><Capability Name="internetClient" /><rescap:Capability Name="runFullTrust" /></Capabilities>
+</Package>

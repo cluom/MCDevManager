@@ -36,6 +36,7 @@ internal static class Program
     [DllImport("ole32.dll")] private static extern int CoRegisterClassObject([MarshalAs(UnmanagedType.LPStruct)] Guid clsid,
         [MarshalAs(UnmanagedType.IUnknown)] object factory, uint context, uint flags, out uint cookie);
     [DllImport("ole32.dll")] private static extern int CoRevokeClassObject(uint cookie);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int MessageBox(IntPtr parent, string text, string title, uint flags);
     [MTAThread]
     private static int Main(string[] args)
     {
@@ -58,6 +59,16 @@ internal static class Program
             }
             if (args.Contains("--clear-sessions")) { store.Import(new AccountSnapshot([])); return 0; }
             if (args.Contains("--generate-assets")) { PreviewAssets.Generate(args[^1]); return 0; }
+            if (args.Contains("--self-check"))
+            {
+                var count = Microsoft.Windows.Widgets.Providers.WidgetManager.GetDefault().GetWidgetInfos().Count();
+                store.Diagnostic($"host_self_check widgets={count}"); return 0;
+            }
+            if (!args.Any(x => x.Equals("--provider", StringComparison.OrdinalIgnoreCase) || x.Equals("-Embedding", StringComparison.OrdinalIgnoreCase)))
+            {
+                _ = MessageBox(IntPtr.Zero, "请在 Win+W 面板添加 MCDevManager 数据小组件。\n\n先启动更新后的 MCDevManager 登录一次，再配置小组件账号。\n\n主程序退出后也可以手动刷新。", "MCDevManager 数据小组件", 0x40);
+                return 0;
+            }
             Marshal.ThrowExceptionForHR(CoInitializeEx(IntPtr.Zero, 0));
             var factory = new ProviderFactory();
             Marshal.ThrowExceptionForHR(CoRegisterClassObject(ClassId, factory, 4, 1, out var cookie));
@@ -66,6 +77,6 @@ internal static class Program
             finally { _ = CoRevokeClassObject(cookie); GC.KeepAlive(factory); CoUninitialize(); }
             return 0;
         }
-        catch (Exception e) { store.Diagnostic("provider_failed type=" + e.GetType().Name); return 1; }
+        catch (Exception e) { store.Diagnostic($"provider_failed type={e.GetType().Name} hr=0x{e.HResult:X8}"); return 1; }
     }
 }

@@ -55,6 +55,10 @@ try
     var display = Cards.Display("AccountTrend", settings, "测试", data, "Large", true, "正在刷新");
     Check(display.Contains("data:image/png;base64,") && !display.Contains("abc%2Bdef"), "同图PNG多线无会话泄露");
     Check(ChartRenderer.Render(series, true).Length > 1_000, "图表生成");
+    var stale = data with { FetchedAt = new DateTimeOffset(2026, 9, 30, 12, 0, 0, TimeSpan.FromHours(8)), Overview = new() { ["yesterday_diamond"] = 8 } };
+    var overview = Cards.Display("Overview", settings, "测试", stale, "Large", false, null);
+    using var staleJson = JsonDocument.Parse(overview);
+    Check(staleJson.RootElement.ToString().Contains("09-29") && !staleJson.RootElement.ToString().Contains("昨日收益"), "旧缓存用绝对日期防止跨午夜误标");
 }
 finally { foreach (var file in Directory.EnumerateFiles(root)) File.Delete(file); Directory.Delete(root); }
 Console.WriteLine($"全部通过：{checks} 项");

@@ -23,6 +23,7 @@ public sealed class WidgetProvider : IWidgetProvider, IWidgetProvider2
     private static readonly object Gate = new();
     private static readonly Dictionary<string, Instance> Instances = [];
     private static readonly SecureStore Store = new();
+    private static FileSystemWatcher? sessionWatcher;
     private static bool initialized;
     public WidgetProvider()
     {
@@ -35,8 +36,29 @@ public sealed class WidgetProvider : IWidgetProvider, IWidgetProvider2
                 Add(context.Id, context.DefinitionId, context.Size.ToString(), info.CustomState);
             }
             initialized = true;
+            sessionWatcher = new FileSystemWatcher(SecureStore.DefaultRoot, "accounts.dat")
+            { NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.CreationTime };
+            sessionWatcher.Changed += (_, _) => SessionsChanged();
+            sessionWatcher.Created += (_, _) => SessionsChanged();
+            sessionWatcher.Renamed += (_, _) => SessionsChanged();
+            sessionWatcher.EnableRaisingEvents = true;
         }
     }
+    private static void SessionsChanged() => Safe(() =>
+    {
+        var accounts = Store.Accounts();
+        foreach (var state in Instances.Values)
+        {
+            var account = accounts.FirstOrDefault(x => x.Id == state.Settings.AccountId);
+            if (account is null || (state.Data is not null && state.Data.SessionFingerprint != account.Fingerprint))
+            {
+                state.Pending?.Cancel(); state.Generation++; state.Refreshing = false;
+                state.Data = null; state.Message = "登录会话已变化，请重新配置或刷新";
+                Store.DeleteCache(state.Id);
+            }
+            Update(state);
+        }
+    });
     private static Instance Add(string id, string definition, string size, string state = "")
     {
         if (Instances.TryGetValue(id, out var known)) return known;
@@ -157,12 +179,14 @@ public sealed class WidgetProvider : IWidgetProvider, IWidgetProvider2
     {
         if (state.Refreshing) return;
         state.Refreshing = true; state.Message = "正在刷新…";
-        state.Pending = new CancellationTokenSource(TimeSpan.FromSeconds(120));
+        var pending = new CancellationTokenSource(TimeSpan.FromSeconds(120));
+        state.Pending = pending;
         Update(state);
-        _ = Refresh(state.Id, state.Definition, state.Settings, state.Generation, state.Pending.Token);
+        _ = Refresh(state.Id, state.Definition, state.Settings, state.Generation, pending);
     }
-    private static async Task Refresh(string id, string definition, WidgetSettings settings, int generation, CancellationToken ct)
+    private static async Task Refresh(string id, string definition, WidgetSettings settings, int generation, CancellationTokenSource pending)
     {
+        var ct = pending.Token;
         WidgetData? result = null; string? message = null;
         try
         {
@@ -185,7 +209,7 @@ public sealed class WidgetProvider : IWidgetProvider, IWidgetProvider2
         Safe(() =>
         {
             if (!Instances.TryGetValue(id, out var state) || state.Generation != generation || state.Settings.Key != settings.Key) return;
-            state.Refreshing = false; state.Pending?.Dispose(); state.Pending = null;
+            state.Refreshing = false; state.Pending = null;
             var fingerprint = Store.Accounts().FirstOrDefault(x => x.Id == settings.AccountId)?.Fingerprint;
             if (result is not null && result.SessionFingerprint == fingerprint)
             {
@@ -194,6 +218,7 @@ public sealed class WidgetProvider : IWidgetProvider, IWidgetProvider2
             else state.Message = message ?? "登录会话已变化，请再次刷新";
             Update(state);
         });
+        pending.Dispose();
     }
     private static string Friendly(Exception e) => e switch
     {
