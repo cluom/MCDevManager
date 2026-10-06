@@ -26,3 +26,7 @@ AGENTS.md
 .agents/
 .codegraph/
 androidApp/release/
+**/bin/
+**/obj/
+/windowsWidgets/dist/
+*.pfx
