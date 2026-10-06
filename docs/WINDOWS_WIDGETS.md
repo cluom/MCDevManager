@@ -39,6 +39,7 @@ powershell -ExecutionPolicy Bypass -File windowsWidgets\build.ps1 -Dotnet D:\sof
 
 - 开发体验：需系统已开启开发者模式；在生成的构建目录执行 `install.ps1 -Development` 从 `payload/AppxManifest.xml` 注册。无需导入信任证书，注册后依赖本地 payload 目录，不能移动或删除。
 - 正式侧载：MSIX 必须签名且证书受本机信任。构建脚本接受 `-CertificateThumbprint`，使用现有证书签名，**不会自动创建或导入信任证书**。不能把未签名包描述成双击即可安装。
+- 不开开发者模式的本地测试：用户明确接受后，可用仅代码签名的非CA自签叶证书。构建导出 `.cer` 公钥，私钥保持本地不可导出。以管理员权限执行 `trust-test-certificate.ps1 -CertificateFile <cer绝对路径> -ExpectedThumbprint <已核对指纹>`，只将指定证书信任到 `LocalMachine/TrustedPeople`，不进入 Root；随后双击签名 MSIX 或执行 `install.ps1`。此信任作用于本机所有用户，测试结束不需要时可移除，不是公开发行可信签名。参考[微软签名指南](https://learn.microsoft.com/en-us/windows/msix/package/sign-msix-package-guide)。
 - 更新主客户端，启动并登录/切换需要用于小组件的账号。Windows 会话桥接自动发现 `MCDevManagerWidgetBridge.exe` 应用执行别名，经标准输入同步；别名被系统禁用时，在 Windows“应用执行别名”设置中重新开启。
 - Win+W → 添加小组件 → 搜索 MCDevManager。先选账号，再保存并刷新。单模组组件切换账号/平台后先点“更新模组列表”。
 - 多选选择器使用系统 `Input.ChoiceSet`；具体紧凑下拉/复选列表外观由 Windows 宿主决定。推荐大尺寸，维度太多时图例可能变密，分别添加实例可以改善可读性。
@@ -60,7 +61,11 @@ Windows 工具模式：`MCDevManagerWidgetBridge.exe --clear-sessions` 清除共
 - 系统宿主：**待实测**。开发者模式/证书信任、添加三个定义、PNG显示、控件多选外观、实际刷新及主程序退出后刷新，不属于上述离线测试结论。
 - 真实账号/网络数据：待实测，不使用虚构预览数据声称平台请求已经成功。
 
-当前本机开发者模式未开启，因此还没有注册系统组件；用户确认后才启用。现有主客户端仍在运行，本轮没有覆盖安装目录。
+2026-10-06 用户明确不启用开发者模式，接受本地签名证书方案。已通过管理员确认将非CA代码签名叶证书放入 TrustedPeople；Root 没有此证书，开发者模式保持关闭。签名、系统验签与独立包安装通过，应用执行别名注册成功，未覆盖现有主客户端。当前安装版本 `1.0.0.2`，包身份 `Cluom.MCDevManager.Widgets_1.0.0.2_x64__5z9wt2vbecfee`；对应ZIP：`windowsWidgets/dist/MCDevManager-Widgets-1.0.0.2-20261006-signed-sdk-8a974ba6.zip`。
+
+宿主 API 自检**尚未通过**：`WidgetManager.GetDefault()` 返回 `COMException/0x8000000F`（元数据类型找不到），方法栈已进入 `ABI.Microsoft.Windows.Widgets.Providers.IWidgetManagerStaticsMethods.GetDefault`。包外同程序返回参数错误；包内诊断进程经 `GetPackageFullName` 确认有真实包身份。先补 Widgets 类型注册，再按[微软 WinRT 注册说明](https://github.com/microsoft/WindowsAppSDK/blob/main/docs/Coding-Guidelines/WinRT-Registration.md)合并 SDK 完整注册；955项额外类型合并且 MakeAppx 验证通过，但此错误仍存在，**不能将包图缺失当作已确认根因或声称组件可用**。只启动并结束了本次诊断进程，没有重置或更新系统服务。系统 WidgetsPlatformRuntime 为 `1.6.19.0`，WebExperience 为 `526.21100.40.0`；是否与错误有关尚未证实。等待用户在 Win+W 搜索/添加后的实际结果，再进一步定位。
+
+22项核心检查仍全部通过；PowerShell 脚本语法检查及项目技能校验通过。真实账号、卡片显示、多选外观和关闭主客户端后的刷新均未验收，OpenSpec 4.2 保持未勾选。用户需要新版桌面客户端同步会话，现有安装未替换；可自行使用本轮构建的便携版，不能把旧客户端未同步误判为账号丢失。
 
 ## 回滚
 
@@ -69,3 +74,5 @@ Get-AppxPackage -Name Cluom.MCDevManager.Widgets | Remove-AppxPackage
 ```
 
 卸载组件不改主客户端数据库。清除共享会话使用上面的工具模式；不需要为回滚删除主程序账号。开发布局注册后，先卸载再删除构建产物。正式更新沿用身份 `Cluom.MCDevManager.Widgets`、发布者 `CN=cluom.MCDevManager` 和固定COM CLSID；递增四段 MSIX 版本。
+
+自签测试结束后，可在管理员 PowerShell 中仅移除对应叶证书：`Remove-Item -LiteralPath 'Cert:\LocalMachine\TrustedPeople\<实际签名证书指纹>'`。保留 CurrentUser/My 的不可导出签名密钥用于后续更新，或在不再发布同签名包时单独移除；不要删除其他证书，不要改 Root。

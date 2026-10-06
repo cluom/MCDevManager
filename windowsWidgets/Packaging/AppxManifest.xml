@@ -49,5 +49,16 @@
    </Extensions>
   </Application>
  </Applications>
+ <Extensions>
+  <!-- Packaged activation uses the package graph, not the EXE's RegFreeWinRT manifest. -->
+  <Extension Category="windows.activatableClass.inProcessServer">
+   <InProcessServer>
+    <Path>Provider\Microsoft.Windows.Widgets.dll</Path>
+    <ActivatableClass ActivatableClassId="Microsoft.Windows.Widgets.Providers.WidgetManager" ThreadingModel="both" />
+    <ActivatableClass ActivatableClassId="Microsoft.Windows.Widgets.Providers.WidgetUpdateRequestOptions" ThreadingModel="both" />
+    <ActivatableClass ActivatableClassId="Microsoft.Windows.Widgets.Providers.WidgetResourceResponse" ThreadingModel="both" />
+   </InProcessServer>
+  </Extension>
+ </Extensions>
  <Capabilities><Capability Name="internetClient" /><rescap:Capability Name="runFullTrust" /></Capabilities>
 </Package>

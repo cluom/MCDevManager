@@ -61,7 +61,10 @@ internal static class Program
             if (args.Contains("--generate-assets")) { PreviewAssets.Generate(args[^1]); return 0; }
             if (args.Contains("--self-check"))
             {
-                var count = Microsoft.Windows.Widgets.Providers.WidgetManager.GetDefault().GetWidgetInfos().Count();
+                store.Diagnostic("host_self_check stage=manager");
+                var manager = Microsoft.Windows.Widgets.Providers.WidgetManager.GetDefault();
+                store.Diagnostic("host_self_check stage=list");
+                var count = manager.GetWidgetInfos().Count();
                 store.Diagnostic($"host_self_check widgets={count}"); return 0;
             }
             if (!args.Any(x => x.Equals("--provider", StringComparison.OrdinalIgnoreCase) || x.Equals("-Embedding", StringComparison.OrdinalIgnoreCase)))
@@ -77,6 +80,17 @@ internal static class Program
             finally { _ = CoRevokeClassObject(cookie); GC.KeepAlive(factory); CoUninitialize(); }
             return 0;
         }
-        catch (Exception e) { store.Diagnostic($"provider_failed type={e.GetType().Name} hr=0x{e.HResult:X8}"); return 1; }
+        catch (Exception e)
+        {
+            store.Diagnostic($"provider_failed type={e.GetType().Name} hr=0x{e.HResult:X8}");
+            // Method names locate activation failures without logging messages,
+            // file paths, request values, cookies, or response content.
+            foreach (var frame in new System.Diagnostics.StackTrace(e, false).GetFrames().Take(6))
+            {
+                var method = frame.GetMethod();
+                store.Diagnostic($"provider_failed frame={method?.DeclaringType?.FullName}.{method?.Name}");
+            }
+            return 1;
+        }
     }
 }

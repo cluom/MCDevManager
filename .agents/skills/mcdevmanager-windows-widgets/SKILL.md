@@ -40,6 +40,9 @@ new("wishlist_gifts", "愿望单赠送", "次")
 - 主客户端关闭不是注销；提供程序必须独立运行。不要把密码写入桥接快照、命令行、CustomState或缓存。
 - 紧凑多选、PNG data URI和最终卡片高度由宿主实测，不凭schema支持就宣称体验通过。
 - 不静默导入信任证书；开发布局注册依赖开发者模式，正式MSIX侧载需要签名及信任。
+- 本机用户选择不启用开发者模式；明确接受证书后，使用仅代码签名、非CA、不可导出私钥的本地测试证书。`trust-test-certificate.ps1` 校验发布者、指纹、EKU和有效期，仅导入 `LocalMachine/TrustedPeople`，不导入 Root。ZIP只含 `.cer` 公钥，不含私钥；这不等于公开发行可信签名。
+- 手工 MSIX 打包合并 SDK 生成的 `WindowsAppSDK.manifest` 中 WinRT 类到包清单根级 `windows.activatableClass.inProcessServer`；DLL路径映射到 `Provider/` 并验证文件随包发布，不能只复制 EXE 的 SxS 清单或手写部分 Widgets 类。合并注册不代表宿主 API 已通过。
+- 2026-10-06 本机签名侧载已通过、应用执行别名具有真实包身份，但 `WidgetManager.GetDefault()` 仍返回 `0x8000000F`，栈已进入 `IWidgetManagerStaticsMethods.GetDefault`。只注册 Widgets 类和合并完整 SDK 注册均未消除此错误，不能宣称包图缺失是根因。Win+W 添加/真实显示/刷新仍待确认；不得擅自升级或重置系统组件服务。
 
 ## 验证
 
