@@ -1,11 +1,14 @@
 package com.lemon.mcdevmanagermp.ui.components
 
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CalendarLocale
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDefaults
 import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DatePickerFormatter
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Text
@@ -13,6 +16,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
@@ -20,6 +24,7 @@ import com.lemon.mcdevmanagermp.ui.theme.LocalAppColors
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
+import kotlinx.datetime.number
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Instant
 
@@ -30,6 +35,26 @@ internal fun datePickerUtcMillis(date: LocalDate): Long =
 
 internal fun dateFromPickerUtcMillis(millis: Long): LocalDate =
     Instant.fromEpochMilliseconds(millis).toLocalDateTime(TimeZone.UTC).date
+
+/** 仅控制显示，不修改系统语言、日历状态或用于查询的日期值。 */
+@OptIn(ExperimentalMaterial3Api::class)
+internal object ChineseDatePickerFormatter : DatePickerFormatter {
+    override fun formatMonthYear(monthMillis: Long?, locale: CalendarLocale): String? =
+        monthMillis?.let(::dateFromPickerUtcMillis)?.let { date ->
+            "${date.year}年${date.month.number}月"
+        }
+
+    override fun formatDate(
+        dateMillis: Long?,
+        locale: CalendarLocale,
+        forContentDescription: Boolean,
+    ): String? = dateMillis?.let(::dateFromPickerUtcMillis)?.let { date ->
+        val text = "${date.year}年${date.month.number}月${date.day}日"
+        if (forContentDescription) {
+            "$text 星期${"一二三四五六日"[date.dayOfWeek.ordinal]}"
+        } else text
+    }
+}
 
 /**
  * 通用日期选择弹窗：基于 Material3 DatePicker，适配应用主题色。
@@ -120,6 +145,10 @@ fun AppDatePickerDialog(
             selectedDayContentColor = colors.onPrimary
         )
     ) {
-        DatePicker(state = datePickerState)
+        DatePicker(
+            state = datePickerState,
+            dateFormatter = ChineseDatePickerFormatter,
+            title = { Text("选择日期", Modifier.padding(horizontal = 24.dp, vertical = 16.dp)) },
+        )
     }
 }
