@@ -58,7 +58,15 @@ kotlin {
         }
     }
     
-    jvm()
+    jvm {
+        testRuns["test"].executionTask.configure {
+            // 密码加解密测试会生成本地密钥；禁止使用真实用户的应用数据目录。
+            val testHome = layout.buildDirectory.dir("isolated-jvm-test-home").get().asFile
+            systemProperty("user.home", testHome.absolutePath)
+            environment("LOCALAPPDATA", testHome.resolve("AppData/Local").absolutePath)
+            environment("XDG_DATA_HOME", testHome.resolve(".local/share").absolutePath)
+        }
+    }
     
     android {
        namespace = "com.lemon.mcdevmanagermp.shared"

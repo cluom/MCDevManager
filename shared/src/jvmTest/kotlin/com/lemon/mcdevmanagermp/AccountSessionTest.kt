@@ -5,9 +5,11 @@ import com.lemon.mcdevmanagermp.data.common.NetworkState
 import com.lemon.mcdevmanagermp.data.vo.netease.user.UserInfoVO
 import com.lemon.mcdevmanagermp.domain.account.*
 import com.lemon.mcdevmanagermp.domain.user.UserRepository
+import com.lemon.mcdevmanagermp.utils.PasswordCrypto
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class AccountSessionTest {
     private class Accounts : AccountRepository {
@@ -67,6 +69,60 @@ class AccountSessionTest {
         val accounts = Accounts()
         val cookies = Cookies()
         AccountManageUseCase(accounts, user(cookies), cookies).switchAccount(accounts.saved)
+        assertRefreshed(accounts, cookies)
+    }
+
+    @Test
+    fun rememberedPasswordEncryptionKeepsRefreshedCookiesAndAccountBinding() = runBlocking {
+        val accounts = Accounts()
+        val cookies = Cookies()
+        SaveAccountUseCase(accounts, user(cookies), cookies)(
+            email = "test@example.com", password = "test-password", rememberPassword = true,
+        )
+        assertTrue(PasswordCrypto.isEncrypted(accounts.saved.password))
+        assertEquals("test-password", PasswordCrypto.decrypt(accounts.saved.password))
+        assertEquals(true, accounts.saved.rememberPassword)
+        assertRefreshed(accounts, cookies)
+    }
+
+    @Test
+    fun cookieLoginEncryptsLegacyPasswordWithoutLosingSavedEmail() = runBlocking {
+        val accounts = Accounts().apply {
+            saved = saved.copy(email = "test@example.com", password = "legacy-password", rememberPassword = true)
+        }
+        val cookies = Cookies()
+        SaveAccountUseCase(accounts, user(cookies), cookies)()
+        assertEquals("test@example.com", accounts.saved.email)
+        assertTrue(PasswordCrypto.isEncrypted(accounts.saved.password))
+        assertEquals("legacy-password", PasswordCrypto.decrypt(accounts.saved.password))
+        assertRefreshed(accounts, cookies)
+    }
+
+    @Test
+    fun cookieLoginPreservesExistingCiphertextWithoutEncryptingItAgain() = runBlocking {
+        val ciphertext = PasswordCrypto.encrypt("test-password")
+        val accounts = Accounts().apply {
+            saved = saved.copy(email = "test@example.com", password = ciphertext, rememberPassword = true)
+        }
+        val cookies = Cookies()
+        SaveAccountUseCase(accounts, user(cookies), cookies)()
+        assertEquals(ciphertext, accounts.saved.password)
+        assertEquals("test-password", PasswordCrypto.decrypt(accounts.saved.password))
+        assertRefreshed(accounts, cookies)
+    }
+
+    @Test
+    fun disablingRememberPasswordClearsCiphertextWithoutLosingSession() = runBlocking {
+        val accounts = Accounts().apply {
+            saved = saved.copy(email = "test@example.com", password = PasswordCrypto.encrypt("old"),
+                rememberPassword = true)
+        }
+        val cookies = Cookies()
+        SaveAccountUseCase(accounts, user(cookies), cookies)(
+            email = "test@example.com", password = "new", rememberPassword = false,
+        )
+        assertEquals("", accounts.saved.password)
+        assertEquals(false, accounts.saved.rememberPassword)
         assertRefreshed(accounts, cookies)
     }
 }
