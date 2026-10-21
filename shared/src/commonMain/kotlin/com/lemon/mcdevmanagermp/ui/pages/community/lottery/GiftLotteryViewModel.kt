@@ -3,6 +3,7 @@ package com.lemon.mcdevmanagermp.ui.pages.community.lottery
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lemon.mcdevmanagermp.data.api.CommentApi
+import com.lemon.mcdevmanagermp.data.api.GiftCommentReplyClient
 import com.lemon.mcdevmanagermp.data.common.NetworkState
 import com.lemon.mcdevmanagermp.data.repository.ResourceRepositoryImpl
 import com.lemon.mcdevmanagermp.data.vo.netease.comment.CommentListVO
@@ -12,6 +13,12 @@ import com.lemon.mcdevmanagermp.domain.lottery.GiftLotteryCriteria
 import com.lemon.mcdevmanagermp.domain.lottery.GiftLotteryResult
 import com.lemon.mcdevmanagermp.domain.lottery.GiftReportAudit
 import com.lemon.mcdevmanagermp.domain.lottery.GiftReportImport
+import com.lemon.mcdevmanagermp.domain.lottery.GiftCommentReplyBatch
+import com.lemon.mcdevmanagermp.domain.lottery.GiftReplyLedger
+import com.lemon.mcdevmanagermp.domain.lottery.GiftReplySender
+import com.lemon.mcdevmanagermp.domain.lottery.GiftReplyStatus
+import com.lemon.mcdevmanagermp.domain.lottery.GiftReplyText
+import com.lemon.mcdevmanagermp.domain.lottery.PreferencesGiftReplyLedger
 import com.lemon.mcdevmanagermp.domain.lottery.LotteryUidImport
 import com.lemon.mcdevmanagermp.domain.lottery.parseLotteryDate
 import com.lemon.mcdevmanagermp.domain.lottery.validLotteryId
@@ -69,6 +76,11 @@ data class GiftLotteryState(
     val modsLoaded: Boolean = false,
     val modsError: String? = null,
     val reportSummary: GiftReportAudit? = null,
+    val replyTemplate: String = "",
+    val replyEnabled: Boolean = false,
+    val replyRunning: Boolean = false,
+    val replyProgress: String = "",
+    val replyNotice: String? = null,
 )
 
 class GiftLotteryViewModel(
@@ -88,6 +100,9 @@ class GiftLotteryViewModel(
             is NetworkState.Error -> throw IllegalStateException("作品列表读取失败：${response.msg}")
         }
     },
+    private val replyLedger: GiftReplyLedger = PreferencesGiftReplyLedger(),
+    private val replySenderFactory: () -> GiftReplySender = { GiftCommentReplyClient(CookiesStore.getAllCookiesMap()) },
+    private val replyIntervalMillis: Long = 1500,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(GiftLotteryState())
     val state = mutableState.asStateFlow()
@@ -98,6 +113,7 @@ class GiftLotteryViewModel(
     private var modsJob: Job? = null
     private var modsRevision = 0
     private var modsRequested = false
+    private var replyJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -120,11 +136,14 @@ class GiftLotteryViewModel(
     private fun invalidate() {
         revision++
         job?.cancel()
+        replyJob?.cancel()
         resultSession = null
-        mutableState.update { it.copy(busy = false, progress = "", result = null, error = null, message = null, reportSummary = null) }
+        mutableState.update { it.copy(busy = false, progress = "", result = null, error = null, message = null,
+            reportSummary = null, replyEnabled = false, replyRunning = false, replyProgress = "", replyNotice = null) }
     }
 
     fun edit(change: (GiftLotteryForm) -> GiftLotteryForm) {
+        if (state.value.replyRunning) { error("请先停止批量回复再修改条件"); return }
         val form = change(state.value.form)
         if (form == state.value.form) return
         invalidate()
@@ -132,6 +151,7 @@ class GiftLotteryViewModel(
     }
 
     fun loadMods() {
+        if (state.value.replyRunning) return
         modsRequested = true
         val expectedRevision = ++modsRevision
         val expectedSession = sessionVersion()
@@ -195,6 +215,7 @@ class GiftLotteryViewModel(
     }
 
     fun draw() {
+        if (state.value.replyRunning) { error("请先停止批量回复再重新抽奖"); return }
         val form = state.value.form
         if (modsRequested && (!state.value.modsLoaded || state.value.modsLoading ||
             state.value.mods.none { it.id == form.sourceItemId } || state.value.mods.none { it.id == form.rewardItemId })) {
@@ -258,6 +279,7 @@ class GiftLotteryViewModel(
     }
 
     fun replacePurchased(uids: Set<String>) {
+        if (state.value.replyRunning) { error("请先停止批量回复"); return }
         val result = exportSnapshot() ?: return
         runCatching { result.replacePurchased(uids) }
             .onSuccess { replacement -> mutableState.update { it.copy(result = replacement, error = null,
@@ -266,6 +288,7 @@ class GiftLotteryViewModel(
     }
 
     fun importGiftReport(text: String, snapshot: GiftLotteryResult) {
+        if (state.value.replyRunning) { error("请先停止批量回复再导入报告"); return }
         if (!validateSnapshot(snapshot)) return
         runCatching { GiftReportImport.apply(snapshot, text) }
             .onSuccess { application ->
@@ -274,8 +297,83 @@ class GiftLotteryViewModel(
                 mutableState.update { it.copy(result = application.result, reportSummary = audit, error = null,
                     message = if (audit.replacedFailureUids.isEmpty()) "报告已读取，没有可补抽的明确失败名额，中奖者保持不变"
                     else "已按报告自动补抽 ${audit.replacedFailureUids.size} 人，成功和其他名额保持不变；请导出新名单 CSV") }
+                startCommentReplies()
             }
             .onFailure { error(it.message ?: "赠送报告处理失败，原名单未修改") }
+    }
+
+    fun setReplyTemplate(text: String) {
+        if (state.value.replyRunning) return
+        mutableState.update { it.copy(replyTemplate = text, replyEnabled = false,
+            replyNotice = if (it.replyEnabled) "文案已修改，请预览后重新启用自动回复" else null) }
+    }
+
+    fun setAutoReply(enabled: Boolean) {
+        if (state.value.replyRunning) return
+        if (enabled && !validateReplyText()) return
+        mutableState.update { it.copy(replyEnabled = enabled, replyNotice = null) }
+        if (enabled) startCommentReplies()
+    }
+
+    private fun validateReplyText(): Boolean = runCatching {
+        val result = state.value.result ?: throw IllegalStateException("请先完成抽奖")
+        val name = state.value.mods.find { it.id == result.criteria.rewardItemId }?.name.orEmpty()
+        result.winners().forEach { GiftReplyText.render(state.value.replyTemplate, it, name, result.criteria.rewardItemId) }
+    }.onFailure { error(it.message ?: "回复文案不正确") }.isSuccess
+
+    fun retryCommentReplies() {
+        if (state.value.replyRunning || !validateReplyText()) return
+        mutableState.update { it.copy(replyEnabled = true) }
+        startCommentReplies(retryRejected = true)
+    }
+
+    fun stopCommentReplies() {
+        mutableState.update { it.copy(replyEnabled = false, replyNotice = "正在停止；已发出的请求可能需要核对") }
+        replyJob?.cancel()
+    }
+
+    private fun startCommentReplies(retryRejected: Boolean = false) {
+        if (!state.value.replyEnabled || state.value.replyRunning) return
+        val result = state.value.result ?: return
+        if (!result.allGiftsConfirmed()) return
+        if (!retryRejected && result.winners().all { result.replyRecords[it.commentId]?.status in
+            setOf(GiftReplyStatus.SUCCESS, GiftReplyStatus.SKIPPED_EXISTING, GiftReplyStatus.SKIPPED_MISSING, GiftReplyStatus.UNCERTAIN) }) return
+        if (!validateSnapshot(result) || !validateReplyText()) return
+        val expectedRevision = revision
+        val expectedSession = sessionVersion()
+        val accountId = expectedSession.first ?: run { error("请先登录账号"); return }
+        val template = state.value.replyTemplate
+        val rewardName = state.value.mods.find { it.id == result.criteria.rewardItemId }?.name.orEmpty()
+        fun sameContext() = revision == expectedRevision && sessionVersion() == expectedSession
+        mutableState.update { it.copy(replyRunning = true, replyProgress = "正在核对源评论…", replyNotice = null) }
+        replyJob = viewModelScope.launch {
+            try {
+                val batch = GiftCommentReplyBatch(replyLedger, { criteria ->
+                    CommentLotteryLoader({ item, start, end, offset, span ->
+                        check(sameContext()) { "账号或名单已变化" }
+                        fetchPage(item, start, end, offset, span)
+                    }).load(criteria)
+                }, replySenderFactory, replyIntervalMillis)
+                batch.run(result, template, rewardName, accountId,
+                    canContinue = { sameContext() && state.value.replyEnabled }, retryRejected = retryRejected,
+                    onRecord = { record -> if (sameContext()) mutableState.update { current ->
+                        current.copy(result = current.result?.let { it.copy(replyRecords = it.replyRecords + (record.commentId to record)) })
+                    } },
+                    onProgress = { done, total -> if (sameContext()) mutableState.update { it.copy(replyProgress = "已处理 $done / $total 条源评论") } })
+                if (sameContext()) {
+                    val records = state.value.result?.replyRecords.orEmpty().values
+                    val sent = records.count { it.status == GiftReplyStatus.SUCCESS }
+                    val pending = records.count { it.status == GiftReplyStatus.UNCERTAIN || it.status == GiftReplyStatus.RESERVED }
+                    mutableState.update { it.copy(replyRunning = false, replyNotice = "回复处理结束：成功 $sent 条，跳过 ${records.size - sent - pending} 条，待核对 $pending 条") }
+                }
+            } catch (exception: CancellationException) {
+                if (sameContext()) mutableState.update { it.copy(replyRunning = false, replyEnabled = false, replyNotice = "已停止回复；不确定请求不会自动重发") }
+                throw exception
+            } catch (exception: Exception) {
+                if (sameContext()) mutableState.update { it.copy(replyRunning = false, replyEnabled = false,
+                    replyNotice = exception.message ?: "回复已停止，请核对状态后继续") }
+            }
+        }
     }
 
     /** 只记录本地成功导出的行；不代表已赠送或已扣费。 */

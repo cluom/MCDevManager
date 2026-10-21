@@ -69,7 +69,10 @@ data class GiftLotteryResult(
     val purchaseCheck: String = "not_checked_manual_replacement",
     val deliveredUids: Set<String> = emptySet(),
     val reportImports: List<GiftReportAudit> = emptyList(),
+    val replyRecords: Map<String, GiftReplyRecord> = emptyMap(),
 ) {
+    fun allGiftsConfirmed(): Boolean = winnerUids.size == criteria.winnerCount &&
+        winnerUids.isNotEmpty() && winnerUids.all { it in deliveredUids }
     fun winners(): List<GiftLotteryEntry> {
         val entries = candidates.associateBy { it.uid }
         return winnerUids.map { entries.getValue(it) }

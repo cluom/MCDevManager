@@ -47,6 +47,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lemon.mcdevmanagermp.domain.lottery.GiftLotteryResult
 import com.lemon.mcdevmanagermp.domain.lottery.LotteryUidImport
 import com.lemon.mcdevmanagermp.domain.lottery.parseLotteryDate
+import com.lemon.mcdevmanagermp.domain.lottery.GiftReplyStatus
 import com.lemon.mcdevmanagermp.ui.components.AppDatePickerDialog
 import com.lemon.mcdevmanagermp.ui.theme.LocalAppColors
 import io.github.vinceglb.filekit.dialogs.FileKitType
@@ -67,6 +68,7 @@ import kotlin.time.Clock
 fun GiftLotteryPage(onBack: () -> Unit) {
     val viewModel: GiftLotteryViewModel = viewModel { GiftLotteryViewModel() }
     val state by viewModel.state.collectAsState()
+    val controlsEnabled = !state.busy && !state.replyRunning
     val scope = rememberCoroutineScope()
     val colors = LocalAppColors.current
     var replacementText by remember { mutableStateOf("") }
@@ -136,14 +138,14 @@ fun GiftLotteryPage(onBack: () -> Unit) {
             }
             LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 item {
-                    Text("按真实 UID 去重，一人一次机会。这里只生成名单，不会赠送或发表评论。",
+                    Text("按真实 UID 去重，一人一次机会。不执行赠送；启用自动回复后，全部报告确认成功才通知源评论。",
                         style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
                 }
                 item {
                     Card(colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerHigh)) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text("参与条件", fontWeight = FontWeight.Bold)
-                            val canSelectMods = !state.busy && state.modsLoaded && !state.modsLoading
+                            val canSelectMods = controlsEnabled && state.modsLoaded && !state.modsLoading
                             LotteryModSelector("来源模组（读取谁的评论）", state.form.sourceItemId, state.mods,
                                 canSelectMods, state.modsLoading) { viewModel.selectMod(it, source = true) }
                             LotteryModSelector("赠送模组（CSV 中的奖品）", state.form.rewardItemId, state.mods,
@@ -152,36 +154,36 @@ fun GiftLotteryPage(onBack: () -> Unit) {
                             if (!state.modsLoading && state.modsLoaded && state.mods.isEmpty()) {
                                 Text("当前账号没有可选的 PE 作品，请检查登录账号。", color = colors.onSurfaceVariant)
                             }
-                            TextButton(onClick = viewModel::loadMods, enabled = !state.modsLoading && !state.busy) {
+                            TextButton(onClick = viewModel::loadMods, enabled = !state.modsLoading && controlsEnabled) {
                                 Text(if (state.modsError != null) "重试读取作品列表" else "刷新作品列表")
                             }
                             Text("从当前账号的作品中选择，支持搜索名称或 ID。日期按北京时间，包含起止两天。",
                                 style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                LotteryDateField("开始日期", state.form.startDate, !state.busy, Modifier.weight(1f)) { dateTarget = 0 }
-                                LotteryDateField("结束日期", state.form.endDate, !state.busy, Modifier.weight(1f)) { dateTarget = 1 }
+                                LotteryDateField("开始日期", state.form.startDate, controlsEnabled, Modifier.weight(1f)) { dateTarget = 0 }
+                                LotteryDateField("结束日期", state.form.endDate, controlsEnabled, Modifier.weight(1f)) { dateTarget = 1 }
                             }
                             Text("评分（多选）", style = MaterialTheme.typography.labelLarge)
                             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 (0..5).forEach { star ->
-                                    FilterChip(selected = star in state.form.stars, enabled = !state.busy,
+                                    FilterChip(selected = star in state.form.stars, enabled = controlsEnabled,
                                         onClick = { viewModel.edit { it.copy(stars = if (star in it.stars) it.stars - star else it.stars + star) } },
                                         label = { Text(if (star == 0) "未评分" else "$star 星") })
                                 }
                             }
                             Text("同一 UID 在所选日期内只看最新评价，再判断是否符合评分和内容条件。",
                                 style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
-                            LotteryField("评论类型（留空不限）", state.form.tag, !state.busy) { value -> viewModel.edit { it.copy(tag = value) } }
-                            LotteryField("评论必须包含（留空不限）", state.form.includeText, !state.busy) { value -> viewModel.edit { it.copy(includeText = value) } }
-                            LotteryField("评论不得包含（留空不限）", state.form.excludeText, !state.busy) { value -> viewModel.edit { it.copy(excludeText = value) } }
+                            LotteryField("评论类型（留空不限）", state.form.tag, controlsEnabled) { value -> viewModel.edit { it.copy(tag = value) } }
+                            LotteryField("评论必须包含（留空不限）", state.form.includeText, controlsEnabled) { value -> viewModel.edit { it.copy(includeText = value) } }
+                            LotteryField("评论不得包含（留空不限）", state.form.excludeText, controlsEnabled) { value -> viewModel.edit { it.copy(excludeText = value) } }
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                LotteryField("抽取人数", state.form.winnerCount, !state.busy, Modifier.weight(1f)) { value -> viewModel.edit { it.copy(winnerCount = value) } }
-                                LotteryField("随机种子（留空自动）", state.form.seed, !state.busy, Modifier.weight(1f)) { value -> viewModel.edit { it.copy(seed = value) } }
+                                LotteryField("抽取人数", state.form.winnerCount, controlsEnabled, Modifier.weight(1f)) { value -> viewModel.edit { it.copy(winnerCount = value) } }
+                                LotteryField("随机种子（留空自动）", state.form.seed, controlsEnabled, Modifier.weight(1f)) { value -> viewModel.edit { it.copy(seed = value) } }
                             }
                             OutlinedTextField(state.form.excludedText, { value -> viewModel.edit { it.copy(excludedText = value) } },
                                 label = { Text("可选：排除 UID，逗号或换行分隔") }, minLines = 2, maxLines = 4,
-                                enabled = !state.busy, modifier = Modifier.fillMaxWidth())
-                            OutlinedButton(onClick = { picker.launch() }, enabled = !state.busy) { Text("导入 UID 排除名单 CSV") }
+                                enabled = controlsEnabled, modifier = Modifier.fillMaxWidth())
+                            OutlinedButton(onClick = { picker.launch() }, enabled = controlsEnabled) { Text("导入 UID 排除名单 CSV") }
                             Text("只接受玩家uid / uid / game_uid 列。订单表的玩家ID是 app_uid，不能直接比对。未自动校验是否已购，请在平台判定已购后补抽。",
                                 style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
                             if (state.busy) {
@@ -189,7 +191,7 @@ fun GiftLotteryPage(onBack: () -> Unit) {
                                 Text(state.progress, style = MaterialTheme.typography.bodySmall)
                                 OutlinedButton(onClick = viewModel::cancel) { Text("取消读取") }
                             } else Button(onClick = viewModel::draw, modifier = Modifier.fillMaxWidth(),
-                                enabled = state.modsLoaded && !state.modsLoading && state.form.sourceItemId.isNotEmpty() && state.form.rewardItemId.isNotEmpty()) {
+                                enabled = controlsEnabled && state.modsLoaded && !state.modsLoading && state.form.sourceItemId.isNotEmpty() && state.form.rewardItemId.isNotEmpty()) {
                                 Text(if (state.result == null) "读取完整评论并抽奖" else "重新读取并整组重抽（清空本轮记录）")
                             }
                         }
@@ -208,19 +210,19 @@ fun GiftLotteryPage(onBack: () -> Unit) {
                             Text("未校验是否已购。标记后只替换对应名额，历史抽中 UID 不再进入候选池。",
                                 style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                                Button(enabled = pendingSnapshot == null && result.pendingCsvUids().isNotEmpty(), onClick = {
+                                Button(enabled = !state.replyRunning && pendingSnapshot == null && result.pendingCsvUids().isNotEmpty(), onClick = {
                                     viewModel.exportSnapshot()?.let {
                                         pendingSnapshot = it; pendingExportMode = 0
                                         saver.launch(suggestedName = "batch_gift_${Clock.System.now().toEpochMilliseconds()}", defaultExtension = "csv")
                                     }
                                 }) { Text("导出新名单 CSV（${result.pendingCsvUids().size}人）") }
-                                OutlinedButton(enabled = pendingSnapshot == null, onClick = {
+                                OutlinedButton(enabled = !state.replyRunning && pendingSnapshot == null, onClick = {
                                     viewModel.exportSnapshot()?.let {
                                         pendingSnapshot = it; pendingExportMode = 1
                                         saver.launch(suggestedName = "batch_gift_full_${Clock.System.now().toEpochMilliseconds()}", defaultExtension = "csv")
                                     }
                                 }) { Text("重新导出完整名单") }
-                                OutlinedButton(enabled = pendingSnapshot == null, onClick = {
+                                OutlinedButton(enabled = !state.replyRunning && pendingSnapshot == null, onClick = {
                                     viewModel.exportSnapshot()?.let {
                                         pendingSnapshot = it; pendingExportMode = 2
                                         saver.launch(suggestedName = "lottery_audit_${Clock.System.now().toEpochMilliseconds()}", defaultExtension = "json")
@@ -229,7 +231,7 @@ fun GiftLotteryPage(onBack: () -> Unit) {
                             }
                             Text("默认只导出尚未导出的新中奖者，补抽后不会再次输出旧批次。完整名单仅用于恢复/核对；导出状态不等于发放状态。",
                                 style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
-                            OutlinedButton(enabled = pendingReportSnapshot == null && pendingSnapshot == null, onClick = {
+                            OutlinedButton(enabled = !state.replyRunning && pendingReportSnapshot == null && pendingSnapshot == null, onClick = {
                                 viewModel.exportSnapshot()?.let { pendingReportSnapshot = it; reportPicker.launch() }
                             }) { Text("导入赠送报告 CSV 并自动补抽") }
                             Text("报告只在本地读取。按当前奖品和中奖 UID 匹配，只补抽明确失败者；成功名额保留，未知/处理中状态、其他模组和非当前中奖者不处理。",
@@ -248,9 +250,10 @@ fun GiftLotteryPage(onBack: () -> Unit) {
                                     }
                                 }
                             }
-                            OutlinedTextField(replacementText, { replacementText = it }, modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 4,
+                            GiftCommentReplySettings(state, viewModel)
+                            OutlinedTextField(replacementText, { replacementText = it }, modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 4, enabled = !state.replyRunning,
                                 label = { Text("批量补抽：粘贴当前中奖名单中已购的 UID") })
-                            OutlinedButton(enabled = replacementText.isNotBlank(), onClick = {
+                            OutlinedButton(enabled = !state.replyRunning && replacementText.isNotBlank(), onClick = {
                                 runCatching { LotteryUidImport.fromText(replacementText) }
                                     .onSuccess { viewModel.replacePurchased(it); if (viewModel.state.value.error == null) replacementText = "" }
                                     .onFailure { viewModel.error(it.message ?: "UID 格式不正确") }
@@ -264,8 +267,18 @@ fun GiftLotteryPage(onBack: () -> Unit) {
                                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Text("${index + 1}. ${winner.nickname}", fontWeight = FontWeight.Medium)
                                     Text("UID ${winner.uid} · ${winner.stars} 星", style = MaterialTheme.typography.bodySmall)
+                                    result.replyRecords[winner.commentId]?.let { reply ->
+                                        val status = when (reply.status) {
+                                            GiftReplyStatus.SUCCESS -> "已回复"
+                                            GiftReplyStatus.SKIPPED_EXISTING -> "已有回复，已跳过"
+                                            GiftReplyStatus.SKIPPED_MISSING -> "源评论无法核对，已跳过"
+                                            GiftReplyStatus.REJECTED -> "平台拒绝，可手动重试"
+                                            GiftReplyStatus.RESERVED, GiftReplyStatus.UNCERTAIN -> "待核对，不自动重发"
+                                        }
+                                        Text("源评论通知：$status", style = MaterialTheme.typography.bodySmall)
+                                    }
                                 }
-                                TextButton(enabled = winner.uid !in result.deliveredUids,
+                                TextButton(enabled = !state.replyRunning && winner.uid !in result.deliveredUids,
                                     onClick = { viewModel.replacePurchased(setOf(winner.uid)) }) {
                                     Text(if (winner.uid in result.deliveredUids) "赠送成功" else "已购，换人")
                                 }

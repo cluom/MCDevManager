@@ -18,7 +18,9 @@ data class CommentData(
     val stars: String,
     val uid: String,
     @SerialName("user_comment")
-    val userComment: String
+    val userComment: String,
+    @SerialName("reply_id")
+    val replyId: String? = null,
 )
 
 @Serializable
