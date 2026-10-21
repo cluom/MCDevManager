@@ -3,12 +3,18 @@ package com.lemon.mcdevmanagermp.ui.pages.community.lottery
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lemon.mcdevmanagermp.data.api.CommentApi
+import com.lemon.mcdevmanagermp.data.common.NetworkState
+import com.lemon.mcdevmanagermp.data.repository.ResourceRepositoryImpl
 import com.lemon.mcdevmanagermp.data.vo.netease.comment.CommentListVO
 import com.lemon.mcdevmanagermp.domain.lottery.CommentLotteryLoader
 import com.lemon.mcdevmanagermp.domain.lottery.GiftLottery
 import com.lemon.mcdevmanagermp.domain.lottery.GiftLotteryCriteria
 import com.lemon.mcdevmanagermp.domain.lottery.GiftLotteryResult
 import com.lemon.mcdevmanagermp.domain.lottery.LotteryUidImport
+import com.lemon.mcdevmanagermp.domain.lottery.parseLotteryDate
+import com.lemon.mcdevmanagermp.domain.lottery.validLotteryId
+import com.lemon.mcdevmanagermp.domain.resource.GetResourceListUseCase
+import com.lemon.mcdevmanagermp.ui.components.ModSelectOption
 import com.lemon.mcdevmanagermp.utils.CookiesStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -22,6 +28,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
 import kotlin.random.Random
@@ -55,6 +62,10 @@ data class GiftLotteryState(
     val error: String? = null,
     val message: String? = null,
     val result: GiftLotteryResult? = null,
+    val mods: List<ModSelectOption> = emptyList(),
+    val modsLoading: Boolean = false,
+    val modsLoaded: Boolean = false,
+    val modsError: String? = null,
 )
 
 class GiftLotteryViewModel(
@@ -68,6 +79,12 @@ class GiftLotteryViewModel(
     private val sessionVersion: () -> Pair<Long?, Long> = CookiesStore::accountSessionVersion,
     sessionVersions: Flow<Pair<Long?, Long>> = CookiesStore.accountSessionVersions(),
     private val computeDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    private val fetchMods: suspend () -> List<ModSelectOption> = {
+        when (val response = GetResourceListUseCase(ResourceRepositoryImpl.INSTANCE)("pe")) {
+            is NetworkState.Success -> response.data.orEmpty().map { ModSelectOption(it.itemId, it.itemName) }
+            is NetworkState.Error -> throw IllegalStateException("作品列表读取失败：${response.msg}")
+        }
+    },
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(GiftLotteryState())
     val state = mutableState.asStateFlow()
@@ -75,6 +92,9 @@ class GiftLotteryViewModel(
     private var revision = 0
     private var session = sessionVersion()
     private var resultSession: Pair<Long?, Long>? = null
+    private var modsJob: Job? = null
+    private var modsRevision = 0
+    private var modsRequested = false
 
     init {
         viewModelScope.launch {
@@ -82,7 +102,13 @@ class GiftLotteryViewModel(
                 if (session != current) {
                     session = current
                     invalidate()
-                    mutableState.value = GiftLotteryState(error = "账号已切换，旧名单和条件已清空，请重新读取评论和抽奖")
+                    modsRevision++
+                    modsJob?.cancel()
+                    mutableState.value = GiftLotteryState(
+                        form = GiftLotteryForm(sourceItemId = "", rewardItemId = ""),
+                        error = "账号已切换，旧名单和模组选择已清空，请重新选择后抽奖",
+                    )
+                    if (modsRequested) loadMods()
                 }
             }
         }
@@ -96,8 +122,56 @@ class GiftLotteryViewModel(
     }
 
     fun edit(change: (GiftLotteryForm) -> GiftLotteryForm) {
+        val form = change(state.value.form)
+        if (form == state.value.form) return
         invalidate()
-        mutableState.update { it.copy(form = change(it.form)) }
+        mutableState.update { it.copy(form = form) }
+    }
+
+    fun loadMods() {
+        modsRequested = true
+        val expectedRevision = ++modsRevision
+        val expectedSession = sessionVersion()
+        modsJob?.cancel()
+        mutableState.update { it.copy(mods = emptyList(), modsLoading = true, modsLoaded = false, modsError = null) }
+        modsJob = viewModelScope.launch {
+            try {
+                val mods = fetchMods().filter { validLotteryId(it.id) }.distinctBy { it.id }
+                    .sortedWith(compareBy<ModSelectOption> { it.name }.thenBy { it.id })
+                if (expectedRevision != modsRevision || expectedSession != sessionVersion()) return@launch
+                val ids = mods.map { it.id }.toSet()
+                edit { it.copy(sourceItemId = it.sourceItemId.takeIf(ids::contains).orEmpty(),
+                    rewardItemId = it.rewardItemId.takeIf(ids::contains).orEmpty()) }
+                mutableState.update { it.copy(mods = mods, modsLoading = false, modsLoaded = true) }
+            } catch (exception: CancellationException) {
+                throw exception
+            } catch (exception: Exception) {
+                if (expectedRevision == modsRevision && expectedSession == sessionVersion()) {
+                    mutableState.update { it.copy(modsLoading = false,
+                        modsError = exception.message ?: "作品列表读取失败，请重试") }
+                }
+            }
+        }
+    }
+
+    fun selectMod(id: String, source: Boolean) {
+        if (!state.value.modsLoaded || state.value.mods.none { it.id == id }) {
+            error("请从当前账号的作品列表中选择模组")
+            return
+        }
+        edit { if (source) it.copy(sourceItemId = id) else it.copy(rewardItemId = id) }
+    }
+
+    fun selectDate(date: LocalDate, start: Boolean) {
+        val today = Clock.System.now().toLocalDateTime(TimeZone.of("Asia/Shanghai")).date
+        val form = state.value.form
+        val startDate = if (start) date else parseLotteryDate(form.startDate)
+        val endDate = if (start) parseLotteryDate(form.endDate) else date
+        if (startDate > endDate || endDate > today) {
+            error("开始日期不能晚于结束日期，且不能选择未来日期")
+            return
+        }
+        edit { if (start) it.copy(startDate = date.toString()) else it.copy(endDate = date.toString()) }
     }
 
     fun cancel() {
@@ -119,6 +193,11 @@ class GiftLotteryViewModel(
 
     fun draw() {
         val form = state.value.form
+        if (modsRequested && (!state.value.modsLoaded || state.value.modsLoading ||
+            state.value.mods.none { it.id == form.sourceItemId } || state.value.mods.none { it.id == form.rewardItemId })) {
+            error("请先加载作品列表，并选择来源模组与赠送模组")
+            return
+        }
         val criteria: GiftLotteryCriteria
         val seed: Long
         try {

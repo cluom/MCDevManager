@@ -23,8 +23,13 @@ import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Instant
 
-/** 应用时区（与 utils/extension/FunExt 的 timeZoneCN 保持一致：Asia/Shanghai）。 */
-private val appTimeZone = TimeZone.of("Asia/Shanghai")
+// Material3 用 UTC 午夜表示日历日期，不是业务时区中的真实时间点。
+// 若传入北京时间午夜，组件会归一化到前一天 UTC 午夜，造成日期回显偏移。
+internal fun datePickerUtcMillis(date: LocalDate): Long =
+    date.atStartOfDayIn(TimeZone.UTC).toEpochMilliseconds()
+
+internal fun dateFromPickerUtcMillis(millis: Long): LocalDate =
+    Instant.fromEpochMilliseconds(millis).toLocalDateTime(TimeZone.UTC).date
 
 /**
  * 通用日期选择弹窗：基于 Material3 DatePicker，适配应用主题色。
@@ -48,13 +53,13 @@ fun AppDatePickerDialog(
     val colors = LocalAppColors.current
 
     val initialMillis = remember(initialDate) {
-        initialDate?.atStartOfDayIn(appTimeZone)?.toEpochMilliseconds()
+        initialDate?.let(::datePickerUtcMillis)
     }
     val minMillis = remember(minDate) {
-        minDate?.atStartOfDayIn(appTimeZone)?.toEpochMilliseconds()
+        minDate?.let(::datePickerUtcMillis)
     }
     val maxMillis = remember(maxDate) {
-        maxDate?.atStartOfDayIn(appTimeZone)?.toEpochMilliseconds()
+        maxDate?.let(::datePickerUtcMillis)
     }
 
     val datePickerState = rememberDatePickerState(
@@ -75,9 +80,7 @@ fun AppDatePickerDialog(
             Button(
                 onClick = {
                     datePickerState.selectedDateMillis?.let { millis ->
-                        val date = Instant.fromEpochMilliseconds(millis)
-                            .toLocalDateTime(appTimeZone).date
-                        onConfirm(date)
+                        onConfirm(dateFromPickerUtcMillis(millis))
                     }
                     onDismiss()
                 },

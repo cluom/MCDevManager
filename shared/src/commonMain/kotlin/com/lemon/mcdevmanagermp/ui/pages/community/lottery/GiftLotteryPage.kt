@@ -32,6 +32,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,6 +46,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lemon.mcdevmanagermp.domain.lottery.GiftLotteryResult
 import com.lemon.mcdevmanagermp.domain.lottery.LotteryUidImport
+import com.lemon.mcdevmanagermp.domain.lottery.parseLotteryDate
+import com.lemon.mcdevmanagermp.ui.components.AppDatePickerDialog
 import com.lemon.mcdevmanagermp.ui.theme.LocalAppColors
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.FileKitDialogSettings
@@ -54,6 +57,8 @@ import io.github.vinceglb.filekit.readBytes
 import io.github.vinceglb.filekit.writeString
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlin.time.Clock
@@ -66,6 +71,8 @@ fun GiftLotteryPage(onBack: () -> Unit) {
     val colors = LocalAppColors.current
     var replacementText by remember { mutableStateOf("") }
     var pendingSnapshot by remember { mutableStateOf<GiftLotteryResult?>(null) }
+    var dateTarget by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(viewModel) { viewModel.loadMods() }
     // 0=未导出的新中奖者，1=完整当前名单，2=审计。
     var pendingExportMode by remember { mutableStateOf(0) }
     val json = remember { Json { prettyPrint = true } }
@@ -117,13 +124,23 @@ fun GiftLotteryPage(onBack: () -> Unit) {
                     Card(colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerHigh)) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text("参与条件", fontWeight = FontWeight.Bold)
-                            LotteryField("来源组件 ID", state.form.sourceItemId, !state.busy) { value -> viewModel.edit { it.copy(sourceItemId = value) } }
-                            LotteryField("赠送组件 ID", state.form.rewardItemId, !state.busy) { value -> viewModel.edit { it.copy(rewardItemId = value) } }
-                            Text("已预填免费凡人问道 → 灵气复苏，可自行修改。日期按北京时间，包含起止两天。",
+                            val canSelectMods = !state.busy && state.modsLoaded && !state.modsLoading
+                            LotteryModSelector("来源模组（读取谁的评论）", state.form.sourceItemId, state.mods,
+                                canSelectMods, state.modsLoading) { viewModel.selectMod(it, source = true) }
+                            LotteryModSelector("赠送模组（CSV 中的奖品）", state.form.rewardItemId, state.mods,
+                                canSelectMods, state.modsLoading) { viewModel.selectMod(it, source = false) }
+                            state.modsError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                            if (!state.modsLoading && state.modsLoaded && state.mods.isEmpty()) {
+                                Text("当前账号没有可选的 PE 作品，请检查登录账号。", color = colors.onSurfaceVariant)
+                            }
+                            TextButton(onClick = viewModel::loadMods, enabled = !state.modsLoading && !state.busy) {
+                                Text(if (state.modsError != null) "重试读取作品列表" else "刷新作品列表")
+                            }
+                            Text("从当前账号的作品中选择，支持搜索名称或 ID。日期按北京时间，包含起止两天。",
                                 style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                LotteryField("开始日期 YYYY-MM-DD", state.form.startDate, !state.busy, Modifier.weight(1f)) { value -> viewModel.edit { it.copy(startDate = value) } }
-                                LotteryField("结束日期 YYYY-MM-DD", state.form.endDate, !state.busy, Modifier.weight(1f)) { value -> viewModel.edit { it.copy(endDate = value) } }
+                                LotteryDateField("开始日期", state.form.startDate, !state.busy, Modifier.weight(1f)) { dateTarget = 0 }
+                                LotteryDateField("结束日期", state.form.endDate, !state.busy, Modifier.weight(1f)) { dateTarget = 1 }
                             }
                             Text("评分（多选）", style = MaterialTheme.typography.labelLarge)
                             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -152,7 +169,8 @@ fun GiftLotteryPage(onBack: () -> Unit) {
                                 LinearProgressIndicator(Modifier.fillMaxWidth())
                                 Text(state.progress, style = MaterialTheme.typography.bodySmall)
                                 OutlinedButton(onClick = viewModel::cancel) { Text("取消读取") }
-                            } else Button(onClick = viewModel::draw, modifier = Modifier.fillMaxWidth()) {
+                            } else Button(onClick = viewModel::draw, modifier = Modifier.fillMaxWidth(),
+                                enabled = state.modsLoaded && !state.modsLoading && state.form.sourceItemId.isNotEmpty() && state.form.rewardItemId.isNotEmpty()) {
                                 Text(if (state.result == null) "读取完整评论并抽奖" else "重新读取并整组重抽（清空本轮记录）")
                             }
                         }
@@ -218,6 +236,18 @@ fun GiftLotteryPage(onBack: () -> Unit) {
                     modifier = Modifier.padding(vertical = 12.dp), style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant) }
             }
         }
+    }
+    dateTarget?.let { target ->
+        val start = parseLotteryDate(state.form.startDate)
+        val end = parseLotteryDate(state.form.endDate)
+        val today = Clock.System.now().toLocalDateTime(TimeZone.of("Asia/Shanghai")).date
+        AppDatePickerDialog(
+            initialDate = if (target == 0) start else end,
+            minDate = if (target == 1) start else null,
+            maxDate = if (target == 0) minOf(end, today) else today,
+            onConfirm = { viewModel.selectDate(it, start = target == 0) },
+            onDismiss = { dateTarget = null },
+        )
     }
 }
 
