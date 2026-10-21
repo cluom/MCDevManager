@@ -72,6 +72,11 @@ open class SessionCookieStore {
         return state.value.cookies.toMap()
     }
 
+    /** 无凭证的账号会话标识；用于异步读取和导出时阻止账号串用。 */
+    fun accountSessionVersion(): Pair<Long?, Long> = state.value.let { it.accountId to it.generation }
+
+    fun accountSessionVersions() = state.map { it.accountId to it.generation }.distinctUntilChanged()
+
     fun clearCookies() {
         Logger.d("SESSION_DIAG v=1 event=session_clear previousCount=${state.value.cookies.size}")
         state.update { State(generation = it.generation + 1) }

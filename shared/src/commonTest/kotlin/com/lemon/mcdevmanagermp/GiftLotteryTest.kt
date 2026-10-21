@@ -27,6 +27,11 @@ class GiftLotteryTest {
         assertEquals(3, draw.uniquePlayers)
     }
 
+    @Test fun sameTimestampUsesNumericCommentIdRatherThanLexicalOrder() {
+        val rows = listOf(comment("1", "9", "5"), comment("1", "10", "1"), comment("2"), comment("3"))
+        assertEquals(setOf("2", "3"), GiftLottery.draw(rows, criteria, 7).winnerUids.toSet())
+    }
+
     @Test fun sourceDatesKeywordsAndUidExclusionsApplyTogether() {
         val rows = listOf(comment("1"), comment("2", text = "崩溃"), comment("3"), comment("4"),
             comment("5", item = "9"), comment("6", time = 1))
@@ -78,6 +83,19 @@ class GiftLotteryTest {
         assertFailsWith<IllegalArgumentException> { result.replacePurchased(setOf("99")) }
         assertEquals(2, result.winnerUids.size)
         assertTrue(result.replacedUids.isEmpty())
+    }
+
+    @Test fun replacementCsvOnlyContainsNewPlayersAfterOriginalExport() {
+        var result = GiftLottery.draw((1..6).map { comment(it.toString()) }, criteria, 9)
+        val original = result.winnerUids.toSet()
+        result = result.copy(exportedUids = original)
+        assertTrue(result.pendingCsvUids().isEmpty())
+        assertFailsWith<IllegalArgumentException> { result.giftCsv(onlyUnexported = true) }
+        result = result.replacePurchased(setOf(result.winnerUids.first()))
+        val newUids = LotteryUidImport.fromCsv(result.giftCsv(onlyUnexported = true))
+        assertEquals(1, newUids.size)
+        assertTrue(newUids.none { it in original })
+        assertEquals(2, LotteryUidImport.fromCsv(result.giftCsv()).size)
     }
 
     @Test fun explicitUidCsvSupportsQuotesAndMultilineNotes() {

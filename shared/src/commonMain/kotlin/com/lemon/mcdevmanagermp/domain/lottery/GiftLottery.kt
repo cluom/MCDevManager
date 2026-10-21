@@ -64,6 +64,7 @@ data class GiftLotteryResult(
     val drawOrder: List<String>,
     val winnerUids: List<String>,
     val replacedUids: List<String> = emptyList(),
+    val exportedUids: Set<String> = emptySet(),
     val algorithm: String = "splitmix64-fisher-yates-v1",
     val purchaseCheck: String = "not_checked_manual_replacement",
 ) {
@@ -86,10 +87,14 @@ data class GiftLotteryResult(
         )
     }
 
-    fun giftCsv(): String {
+    fun pendingCsvUids(): List<String> = winnerUids.filterNot { it in exportedUids }
+
+    fun giftCsv(onlyUnexported: Boolean = false): String {
         require(winnerUids.size == criteria.winnerCount && winnerUids.distinct().size == winnerUids.size)
         require(winnerUids.all(::validLotteryId) && validLotteryId(criteria.rewardItemId))
-        return "\uFEFF玩家uid,模组id\r\n" + winnerUids.joinToString("\r\n", postfix = "\r\n") {
+        val ids = if (onlyUnexported) pendingCsvUids() else winnerUids
+        require(ids.isNotEmpty()) { "没有尚未导出的新中奖者；需要恢复文件时可重新导出完整名单" }
+        return "\uFEFF玩家uid,模组id\r\n" + ids.joinToString("\r\n", postfix = "\r\n") {
             "$it,${criteria.rewardItemId}"
         }
     }
@@ -104,7 +109,8 @@ object GiftLottery {
             .filter { it.iid == criteria.sourceItemId && validLotteryId(it.uid) }
             .filter { Instant.fromEpochSeconds(it.publishTime).toLocalDateTime(TimeZone.of("Asia/Shanghai")).date in start..end }
             .groupBy { it.uid }
-            .mapValues { (_, rows) -> rows.maxWith(compareBy<CommentData> { it.publishTime }.thenBy { it.id }) }
+            .mapValues { (_, rows) -> rows.maxWith(compareBy<CommentData> { it.publishTime }
+                .thenBy { it.id.toLongOrNull() ?: 0L }.thenBy { it.id }) }
             .values
         val matches = latest.filter { row ->
             val stars = row.stars.toIntOrNull() ?: return@filter false

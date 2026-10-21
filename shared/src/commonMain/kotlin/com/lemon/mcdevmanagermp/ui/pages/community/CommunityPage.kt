@@ -54,9 +54,10 @@ import com.lemon.mcdevmanagermp.ui.iconpack.Feedback
 import com.lemon.mcdevmanagermp.ui.iconpack.IconPack
 import com.lemon.mcdevmanagermp.ui.pages.community.comment.CommentPage
 import com.lemon.mcdevmanagermp.ui.pages.community.feedback.FeedbackPage
+import com.lemon.mcdevmanagermp.ui.pages.community.lottery.GiftLotteryPage
 import com.lemon.mcdevmanagermp.ui.theme.LocalAppColors
 
-private enum class CommunitySubPage { List, Feedback, Comment }
+private enum class CommunitySubPage { List, Feedback, Comment, Lottery }
 
 @Composable
 fun CommunityContent() {
@@ -85,7 +86,8 @@ fun CommunityContent() {
             CommunitySubPage.List -> CommunityListPage(
                 statusBarTop = statusBarTop,
                 onNavigateToFeedback = { currentSubPage = CommunitySubPage.Feedback },
-                onNavigateToComment = { currentSubPage = CommunitySubPage.Comment }
+                onNavigateToComment = { currentSubPage = CommunitySubPage.Comment },
+                onNavigateToLottery = { currentSubPage = CommunitySubPage.Lottery }
             )
 
             CommunitySubPage.Feedback -> FeedbackPage(
@@ -93,6 +95,10 @@ fun CommunityContent() {
             )
 
             CommunitySubPage.Comment -> CommentPage(
+                onBack = { currentSubPage = CommunitySubPage.List }
+            )
+
+            CommunitySubPage.Lottery -> GiftLotteryPage(
                 onBack = { currentSubPage = CommunitySubPage.List }
             )
         }
@@ -103,7 +109,8 @@ fun CommunityContent() {
 private fun CommunityListPage(
     statusBarTop: androidx.compose.ui.unit.Dp,
     onNavigateToFeedback: () -> Unit,
-    onNavigateToComment: () -> Unit
+    onNavigateToComment: () -> Unit,
+    onNavigateToLottery: () -> Unit
 ) {
     val colors = LocalAppColors.current
     val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -150,6 +157,15 @@ private fun CommunityListPage(
                 title = "组件评论",
                 subtitle = "查看和回复玩家的组件评论",
                 onClick = onNavigateToComment
+            )
+
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = colors.outlineVariant, thickness = 0.5.dp)
+
+            CommunityItem(
+                icon = IconPack.Comment,
+                title = "条件抽奖",
+                subtitle = "筛选评论、按UID抽奖、已购补抽并导出赠送CSV",
+                onClick = onNavigateToLottery
             )
         }
     }
