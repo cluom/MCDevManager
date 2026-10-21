@@ -32,3 +32,12 @@
 ## 验证范围
 
 共享 JVM 测试覆盖筛选、去重、日期分窗、缺页拒绝、账号切换、取消、补抽和分批 CSV。桌面编译验证不等于真实 QQ/游戏、平台批量导入或手机文件保存验收。Windows 无法运行 iOS 模拟器测试；本轮不自动替换用户已安装程序。
+
+### 2026-10-21 合并与交付记录
+
+- 已合入上游 `upstream/mp-master` 的 `d7ecc75`（v1.2.8），包含图片上传及富文本详情图片处理修复；保留本分支条件抽奖、已购补抽及 CSV 导出功能。
+- 使用已有 JDK 21 和 Gradle 缓存执行 `:shared:jvmTest :desktopApp:packagePortable --offline --no-configuration-cache`。最终构建成功：22 个测试套件、163 项测试，失败/错误/跳过均为 0；其中本功能新增 21 项测试。
+- 最终 Windows 便携包：`desktopApp/build/release/portable/MCDevManager-1.2.8-lottery-20261021-9eb1818b.zip`，133,483,462 字节。SHA-256：`2C802E49D064B4A4BCF45B70AD7681708C598AF3331E03C7C1C01C1DE9335EF0`。
+- ZIP 的 297 个条目全部通过 CRC 校验；已确认包含抽奖页面、抽奖引擎、上游新增详情处理类、内置版本 1.2.8，以及保存对话框失败时解除导出等待状态的处理。未打入账号数据库、Cookie 文件、日志或密钥库。
+- 已通过 OpenSpec 严格校验。当前 PyCharm 未打开本项目，因此没有宣称 IDE 检查通过；以上结论来自实际 Kotlin 编译与 JVM 测试。
+- 尚未进行平台 CSV 导入、实际赠送及图形界面人工验收；未覆盖 `D:\software\MCDevManager`，未修改账号数据，未推送远程分支。手机端构建与文件保存不在本次 Windows 验证范围内。

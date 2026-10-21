@@ -80,7 +80,13 @@ fun GiftLotteryPage(onBack: () -> Unit) {
             catch (exception: Exception) { viewModel.error(exception.message ?: "CSV 读取失败，请使用 UTF-8 编码") }
         }
     }
-    val saver = rememberFileSaverLauncher(dialogSettings = FileKitDialogSettings.createDefault()) { file ->
+    val saver = rememberFileSaverLauncher(
+        dialogSettings = FileKitDialogSettings.createDefault(),
+        onError = {
+            pendingSnapshot = null
+            viewModel.error("无法打开保存对话框，请重试或选择可写目录")
+        },
+    ) { file ->
         val snapshot = pendingSnapshot
         val mode = pendingExportMode
         pendingSnapshot = null
