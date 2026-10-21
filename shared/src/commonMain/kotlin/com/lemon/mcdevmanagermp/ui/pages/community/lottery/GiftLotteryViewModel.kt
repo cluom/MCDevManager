@@ -10,6 +10,8 @@ import com.lemon.mcdevmanagermp.domain.lottery.CommentLotteryLoader
 import com.lemon.mcdevmanagermp.domain.lottery.GiftLottery
 import com.lemon.mcdevmanagermp.domain.lottery.GiftLotteryCriteria
 import com.lemon.mcdevmanagermp.domain.lottery.GiftLotteryResult
+import com.lemon.mcdevmanagermp.domain.lottery.GiftReportAudit
+import com.lemon.mcdevmanagermp.domain.lottery.GiftReportImport
 import com.lemon.mcdevmanagermp.domain.lottery.LotteryUidImport
 import com.lemon.mcdevmanagermp.domain.lottery.parseLotteryDate
 import com.lemon.mcdevmanagermp.domain.lottery.validLotteryId
@@ -66,6 +68,7 @@ data class GiftLotteryState(
     val modsLoading: Boolean = false,
     val modsLoaded: Boolean = false,
     val modsError: String? = null,
+    val reportSummary: GiftReportAudit? = null,
 )
 
 class GiftLotteryViewModel(
@@ -118,7 +121,7 @@ class GiftLotteryViewModel(
         revision++
         job?.cancel()
         resultSession = null
-        mutableState.update { it.copy(busy = false, progress = "", result = null, error = null, message = null) }
+        mutableState.update { it.copy(busy = false, progress = "", result = null, error = null, message = null, reportSummary = null) }
     }
 
     fun edit(change: (GiftLotteryForm) -> GiftLotteryForm) {
@@ -260,6 +263,19 @@ class GiftLotteryViewModel(
             .onSuccess { replacement -> mutableState.update { it.copy(result = replacement, error = null,
                 message = "已替换 ${uids.size} 人，其他中奖者不变；请重新导出 CSV") } }
             .onFailure { error(it.message ?: "补抽失败") }
+    }
+
+    fun importGiftReport(text: String, snapshot: GiftLotteryResult) {
+        if (!validateSnapshot(snapshot)) return
+        runCatching { GiftReportImport.apply(snapshot, text) }
+            .onSuccess { application ->
+                if (!validateSnapshot(snapshot)) return@onSuccess
+                val audit = application.audit
+                mutableState.update { it.copy(result = application.result, reportSummary = audit, error = null,
+                    message = if (audit.replacedFailureUids.isEmpty()) "报告已读取，没有可补抽的明确失败名额，中奖者保持不变"
+                    else "已按报告自动补抽 ${audit.replacedFailureUids.size} 人，成功和其他名额保持不变；请导出新名单 CSV") }
+            }
+            .onFailure { error(it.message ?: "赠送报告处理失败，原名单未修改") }
     }
 
     /** 只记录本地成功导出的行；不代表已赠送或已扣费。 */

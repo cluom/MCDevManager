@@ -217,4 +217,54 @@ class GiftLotteryViewModelTest {
             assertNull(vm.state.value.error)
         } finally { store.clear(); Dispatchers.resetMain() }
     }
+
+    @Test fun giftReportAutomaticallyReplacesFailureAndRecordsSuccess() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        val versions = MutableStateFlow<Pair<Long?, Long>>(1L to 0L)
+        val store = ViewModelStore()
+        try {
+            val vm = GiftLotteryViewModel({ _, _, _, _, _ -> CommentListVO(6, rows()) }, { versions.value }, versions, dispatcher)
+            store.put("lottery", vm)
+            vm.edit { it.copy(sourceItemId = "1", winnerCount = "2", startDate = "2026-10-01", endDate = "2026-10-21") }
+            vm.draw(); advanceUntilIdle()
+            val original = assertNotNull(vm.exportSnapshot())
+            val (failed, success) = original.winnerUids
+            val reward = original.criteria.rewardItemId
+            val report = "玩家uid,模组id,状态,失败原因\n$failed,$reward,失败,已拥有\n$success,$reward,成功,\n"
+            vm.importGiftReport(report, original)
+            val updated = assertNotNull(vm.exportSnapshot())
+            assertEquals(success, updated.winnerUids[1])
+            assertTrue(failed !in updated.winnerUids)
+            assertEquals(1, updated.pendingCsvUids().size)
+            assertEquals(setOf(success), updated.deliveredUids)
+            assertEquals(1, vm.state.value.reportSummary?.replacedFailureUids?.size)
+        } finally { store.clear(); Dispatchers.resetMain() }
+    }
+
+    @Test fun giftReportFromOldFileDialogOrMalformedCsvCannotModifyCurrentResult() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        val versions = MutableStateFlow<Pair<Long?, Long>>(1L to 0L)
+        val store = ViewModelStore()
+        try {
+            val vm = GiftLotteryViewModel({ _, _, _, _, _ -> CommentListVO(6, rows()) }, { versions.value }, versions, dispatcher)
+            store.put("lottery", vm)
+            vm.edit { it.copy(sourceItemId = "1", winnerCount = "2", startDate = "2026-10-01", endDate = "2026-10-21") }
+            vm.draw(); advanceUntilIdle()
+            val original = assertNotNull(vm.exportSnapshot())
+            vm.importGiftReport("玩家ID,状态\n123,失败", original)
+            assertTrue(vm.state.value.result === original)
+            assertNull(vm.state.value.reportSummary)
+            vm.replacePurchased(setOf(original.winnerUids.first()))
+            val replacement = assertNotNull(vm.exportSnapshot())
+            vm.importGiftReport("玩家uid,模组id,状态\n${original.winnerUids[1]},${original.criteria.rewardItemId},失败", original)
+            assertTrue(vm.state.value.result === replacement)
+            assertNull(vm.state.value.reportSummary)
+            versions.value = 2L to 1L
+            advanceUntilIdle()
+            vm.importGiftReport("玩家uid,模组id,状态\n${replacement.winnerUids[0]},${replacement.criteria.rewardItemId},失败", replacement)
+            assertNull(vm.state.value.result)
+        } finally { store.clear(); Dispatchers.resetMain() }
+    }
 }

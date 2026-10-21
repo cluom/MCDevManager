@@ -67,6 +67,8 @@ data class GiftLotteryResult(
     val exportedUids: Set<String> = emptySet(),
     val algorithm: String = "splitmix64-fisher-yates-v1",
     val purchaseCheck: String = "not_checked_manual_replacement",
+    val deliveredUids: Set<String> = emptySet(),
+    val reportImports: List<GiftReportAudit> = emptyList(),
 ) {
     fun winners(): List<GiftLotteryEntry> {
         val entries = candidates.associateBy { it.uid }
@@ -77,7 +79,8 @@ data class GiftLotteryResult(
     fun replacePurchased(uids: Set<String>): GiftLotteryResult {
         require(uids.isNotEmpty()) { "请先选择需要补抽的中奖玩家" }
         require(winnerUids.containsAll(uids)) { "只能标记当前中奖名单中的 UID" }
-        val used = (winnerUids + replacedUids).toHashSet()
+        require(uids.none { it in deliveredUids }) { "已确认赠送成功的玩家不能再次补抽" }
+        val used = (winnerUids + replacedUids + deliveredUids).toHashSet()
         val replacements = drawOrder.filterNot { it in used }.take(uids.size)
         require(replacements.size == uids.size) { "剩余合格玩家不足，无法补齐这些名额" }
         val iterator = replacements.iterator()
@@ -87,7 +90,7 @@ data class GiftLotteryResult(
         )
     }
 
-    fun pendingCsvUids(): List<String> = winnerUids.filterNot { it in exportedUids }
+    fun pendingCsvUids(): List<String> = winnerUids.filterNot { it in exportedUids || it in deliveredUids }
 
     fun giftCsv(onlyUnexported: Boolean = false): String {
         require(winnerUids.size == criteria.winnerCount && winnerUids.distinct().size == winnerUids.size)
@@ -183,7 +186,7 @@ object LotteryUidImport {
         return ids.toSet()
     }
 
-    private fun parseCsv(text: String): List<List<String>> {
+    internal fun parseCsv(text: String): List<List<String>> {
         val rows = mutableListOf<List<String>>()
         val row = mutableListOf<String>()
         val field = StringBuilder()

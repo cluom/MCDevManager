@@ -71,6 +71,7 @@ fun GiftLotteryPage(onBack: () -> Unit) {
     val colors = LocalAppColors.current
     var replacementText by remember { mutableStateOf("") }
     var pendingSnapshot by remember { mutableStateOf<GiftLotteryResult?>(null) }
+    var pendingReportSnapshot by remember { mutableStateOf<GiftLotteryResult?>(null) }
     var dateTarget by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(viewModel) { viewModel.loadMods() }
     // 0=未导出的新中奖者，1=完整当前名单，2=审计。
@@ -85,6 +86,24 @@ fun GiftLotteryPage(onBack: () -> Unit) {
                 viewModel.importExcludedCsv(bytes.decodeToString(throwOnInvalidSequence = true))
             } catch (exception: CancellationException) { throw exception }
             catch (exception: Exception) { viewModel.error(exception.message ?: "CSV 读取失败，请使用 UTF-8 编码") }
+        }
+    }
+    val reportPicker = rememberFilePickerLauncher(
+        type = FileKitType.File(),
+        onError = {
+            pendingReportSnapshot = null
+            viewModel.error("无法打开报告选择窗口，请重试")
+        },
+    ) { file ->
+        val snapshot = pendingReportSnapshot
+        pendingReportSnapshot = null
+        if (file != null && snapshot != null) scope.launch {
+            try {
+                val bytes = file.readBytes()
+                require(bytes.size <= 5 * 1024 * 1024) { "赠送报告不能超过 5 MB" }
+                viewModel.importGiftReport(bytes.decodeToString(throwOnInvalidSequence = true), snapshot)
+            } catch (exception: CancellationException) { throw exception }
+            catch (exception: Exception) { viewModel.error(exception.message ?: "报告读取失败，请使用 UTF-8 CSV") }
         }
     }
     val saver = rememberFileSaverLauncher(
@@ -210,6 +229,25 @@ fun GiftLotteryPage(onBack: () -> Unit) {
                             }
                             Text("默认只导出尚未导出的新中奖者，补抽后不会再次输出旧批次。完整名单仅用于恢复/核对；导出状态不等于发放状态。",
                                 style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+                            OutlinedButton(enabled = pendingReportSnapshot == null && pendingSnapshot == null, onClick = {
+                                viewModel.exportSnapshot()?.let { pendingReportSnapshot = it; reportPicker.launch() }
+                            }) { Text("导入赠送报告 CSV 并自动补抽") }
+                            Text("报告只在本地读取。按当前奖品和中奖 UID 匹配，只补抽明确失败者；成功名额保留，未知/处理中状态、其他模组和非当前中奖者不处理。",
+                                style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+                            state.reportSummary?.let { summary ->
+                                Card(colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerHigh)) {
+                                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text("上次报告：${summary.totalRows} 条", fontWeight = FontWeight.Medium)
+                                        Text("确认成功 ${summary.confirmedSuccessUids.size} 人 · 自动补抽 ${summary.replacedFailureUids.size} 人 · 状态待确认 ${summary.unresolvedUids.size} 人",
+                                            style = MaterialTheme.typography.bodySmall)
+                                        Text("忽略：其他模组 ${summary.otherItemRows} 条、非当前中奖者 ${summary.outsideWinnerRows} 条；合并重复 ${summary.duplicateRows} 条；保护此前成功 ${summary.protectedSuccessUids.size} 人。",
+                                            style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+                                        if (summary.unresolvedStatuses.isNotEmpty()) Text(
+                                            "未自动处理的状态：${summary.unresolvedStatuses.take(6).joinToString("、")}",
+                                            style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+                                    }
+                                }
+                            }
                             OutlinedTextField(replacementText, { replacementText = it }, modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 4,
                                 label = { Text("批量补抽：粘贴当前中奖名单中已购的 UID") })
                             OutlinedButton(enabled = replacementText.isNotBlank(), onClick = {
@@ -227,7 +265,10 @@ fun GiftLotteryPage(onBack: () -> Unit) {
                                     Text("${index + 1}. ${winner.nickname}", fontWeight = FontWeight.Medium)
                                     Text("UID ${winner.uid} · ${winner.stars} 星", style = MaterialTheme.typography.bodySmall)
                                 }
-                                TextButton(onClick = { viewModel.replacePurchased(setOf(winner.uid)) }) { Text("已购，换人") }
+                                TextButton(enabled = winner.uid !in result.deliveredUids,
+                                    onClick = { viewModel.replacePurchased(setOf(winner.uid)) }) {
+                                    Text(if (winner.uid in result.deliveredUids) "赠送成功" else "已购，换人")
+                                }
                             }
                         }
                     }
