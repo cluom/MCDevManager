@@ -24,3 +24,12 @@ python3 -B -m unittest discover -s iosApp/scripts -p 'test_*.py'
 除原有手动入口外，推送 `ios-build-*` 标签也会触发独立 iOS Release 构建。此入口可复用已有 Git SSH 登录，不需要另存 GitHub API 令牌。标签后缀作为产物文件名标记，包内版本仍同步 `versions-name`；构建号仍取 `GITHUB_RUN_NUMBER`。
 
 每次使用新标签，例如 `ios-build-1.2.9-widget-lottery-20261026-<短提交号>`。普通分支推送不触发打包，此标签不创建 GitHub Release，也不触发 Android / Windows / macOS 构建。下载 ZIP 继续带 `run_id` 和 `run_attempt`，避免与旧文件重名。
+
+## iOS 1.2.9 定制包（2026-10-26）
+
+- 拉取 `origin` / `upstream` 后确认稳定上游仍为 `41b4b0f`（1.2.9），已包含在当前分支；本次没有新的上游应用代码需要合并。
+- 构建源码：`b2c91f63a6330e09ecf03413ce7beee703197270`；标签：`ios-build-1.2.9-widget-lottery-20261026-b2c91f63`。保留收益小组件、手动刷新、明细翻页、绿宝石文案，以及条件抽奖、报告补抽、自动回复和中文日期等本地功能。
+- [iOS Build #10](https://github.com/cluom/MCDevManager/actions/runs/40298009421) 全部成功，Release 配置；包内版本 `1.2.9`、构建号 `10`，由云端同步及实际 IPA 校验步骤确认。开始于北京时间 17:14，完成于 17:49；运行记录总时长约 35 分 25 秒，主编译步骤 33 分 1 秒。
+- 本地实际重跑 `:shared:jvmTest --rerun --offline --console=plain`：27 个测试套件、203 项测试，0 失败、0 错误、0 跳过；8 项 iOS 版本工具测试通过。云端小组件 Swift 测试、Xcode 工程检查、原生编译、扩展准备及 IPA 版本校验均通过。
+- [下载 ZIP](https://github.com/cluom/MCDevManager/actions/runs/40298009421/artifacts/12640747028)：`ios-ipa-1.2.9-widget-lottery-20261026-b2c91f63-40298009421-1.zip`，35,809,646 字节。GitHub 记录的产物 SHA-256：`f5454b629023730de35cb9365c3f65cf9d26ca3605f033ebf500d75b9adaf7a4`。
+- 包内 IPA 文件名：`MCDevManagerMP-V1.2.9-widget-lottery-20261026-b2c91f63-Release-ios-arm64.ipa`。该包需要用户自行重签，保留小组件扩展；本轮未下载到用户下载目录、未进行手机安装或真机验收，也未替换 Windows 客户端。
