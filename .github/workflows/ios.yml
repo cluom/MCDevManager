@@ -1,10 +1,14 @@
 name: iOS Build
-run-name: iOS ${{ inputs.configuration || 'Release' }} · ${{ inputs.version || 'CI' }}
+run-name: iOS ${{ inputs.configuration || 'Release' }} · ${{ inputs.version || github.ref_name }}
 
-# 独立的 iOS 构建入口，仅手动触发。
+# 独立的 iOS 构建入口：手动触发，或推送专用 ios-build-* 标签。
+# 专用标签只打 iOS 包，不创建 GitHub Release，也不触发其它平台。
 # 用于反复调试 / 按需构建未签名 IPA，无需等待其他平台。
 # 与 Release / Build Test 中的 ios 任务逻辑一致，互不影响。
 on:
+  push:
+    tags:
+      - 'ios-build-*'
   workflow_dispatch:
     inputs:
       version:
@@ -83,6 +87,9 @@ jobs:
           REQUESTED_VERSION: ${{ inputs.version }}
         run: |
           V="$REQUESTED_VERSION"
+          if [ -z "$V" ] && [ "$GITHUB_REF_TYPE" = tag ]; then
+            V="${GITHUB_REF_NAME#ios-build-}"
+          fi
           if [ -z "$V" ]; then
             V="ci-${{ github.run_number }}"
           fi
