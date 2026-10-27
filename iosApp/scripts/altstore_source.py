@@ -14,6 +14,8 @@ import tempfile
 from urllib.parse import quote
 import zipfile
 
+from generate_altstore_source import display_version
+
 
 REPOSITORY = "cluom/MCDevManager"
 BUNDLE_ID = "com.lemon.mcdevmanagermp.MCDevManagerMPR"
@@ -105,7 +107,8 @@ def inspect_ipa(ipa, entitlement_reader=read_entitlements):
                     privacy.setdefault(key, value)
         with ipa.open("rb") as stream:
             digest = hashlib.file_digest(stream, "sha256").hexdigest()
-        return {**version, "minOSVersion": minimum, "size": ipa.stat().st_size,
+        return {**version, "marketingVersion": display_version(info),
+                "minOSVersion": minimum, "size": ipa.stat().st_size,
                 "sha256": digest,
                 "appPermissions": {"entitlements": sorted(entitlements), "privacy": privacy}}
 
@@ -117,12 +120,14 @@ def make_source(metadata, run_id, date, previous=None):
     if datetime.fromisoformat(date.replace("Z", "+00:00")).tzinfo is None:
         raise ValueError("Release date must include a time zone")
     tag = f"altstore-ios-{run_id}"
-    filename = f"MCDevManager-{metadata['version']}-{metadata['buildVersion']}.ipa"
+    display = metadata.get("marketingVersion", metadata["version"])
+    filename = f"MCDevManager-{display}-{metadata['buildVersion']}.ipa"
     entry = {key: metadata[key] for key in
              ("version", "buildVersion", "minOSVersion", "size")}
     entry.update({"date": date, "downloadURL": f"{RELEASE_BASE}/{tag}/{quote(filename)}",
                   "localizedDescription": "保留收益小组件与现有扩展功能。"
                                           "请保留小组件扩展，使用原 Apple ID 覆盖安装。"})
+    entry["marketingVersion"] = display
     permissions = deepcopy(metadata["appPermissions"])
     versions = []
     if previous:

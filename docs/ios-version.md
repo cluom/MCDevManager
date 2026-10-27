@@ -8,7 +8,26 @@
 python3 iosApp/scripts/version.py sync --build-number "$GITHUB_RUN_NUMBER"
 ```
 
-本地 Xcode 构建前运行 `python3 iosApp/scripts/version.py sync`，保留本地构建号。共享版本必须采用 `主.次.修订` 的纯数字格式；定制版后缀仅放在产物文件名中。
+本地 Xcode 构建前运行 `python3 iosApp/scripts/version.py sync --build-number <新构建号>`；新发布的构建号必须大于软件源里同基础版本的已有构建号。CI 会使用自己的运行序号。
+
+## 定制修订号
+
+共享版本支持 `主.次.修订` 或 `主.次.修订.定制修订号`，例如 `1.2.9.1`。比较时按每段数字排序，因此 `1.2.9 < 1.2.9.1 < 1.2.9.10 < 1.2.10`；不会挡住上游更新提醒。
+
+开始下一次定制发布时运行一次 `python3 iosApp/scripts/version.py bump-revision`：`1.2.9` 变为 `1.2.9.1`，再执行变为 `1.2.9.2`。同一发布的构建重试不要递增；合并上游 `1.2.10` 后，将基础版本切到 `1.2.10`，继续有定制发布则用 `1.2.10.1`。
+
+兼容 iOS 安装与 AltStore / SideStore 校验的映射如下：
+
+| 位置 | `1.2.9.1` 的值 |
+| --- | --- |
+| 应用内版本、更新比较、IPA 文件名 | `1.2.9.1` |
+| IPA `CFBundleShortVersionString` | `1.2.9` |
+| IPA `CFBundleVersion` | 独立递增构建号 |
+| IPA `MCDevManagerDisplayVersion` | `1.2.9.1` |
+| Source `version` / `buildVersion` | 与 IPA 的上述真实字段严格一致 |
+| Source `marketingVersion` | `1.2.9.1` |
+
+Windows 便携包和应用内仍显示完整版本；原生安装器的 `packageVersion` 取前三段，不能据此宣称同基础版本的 MSI 安装升级已验证。不要只改旧 Release 的名称或软件源来冒充新包。
 
 打包后必须校验实际 IPA 内的 `CFBundleShortVersionString` 和 `CFBundleVersion`，不匹配就终止上传：
 

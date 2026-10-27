@@ -40,6 +40,21 @@ class AltStoreSourceTests(unittest.TestCase):
         self.assertEqual(self.generate()["apps"][0]["versions"][0]["downloadURL"],
                          "https://fork.example/app.ipa")
 
+    def test_custom_marketing_version_does_not_replace_installation_version(self):
+        self.metadata["marketingVersion"] = "1.2.9.1"
+        entry = self.generate()["apps"][0]["versions"][0]
+        self.assertEqual(entry["marketingVersion"], "1.2.9.1")
+        self.assertEqual(entry["version"], "1.2.9")
+        self.assertEqual(entry["buildVersion"], "10")
+
+    def test_display_version_matches_bundle_base(self):
+        info = {"CFBundleShortVersionString": "1.2.9", "MCDevManagerDisplayVersion": "1.2.9.1"}
+        self.assertEqual(tool.display_version(info), "1.2.9.1")
+        for value in ("1.2.10.1", "1.2.9.0", "1.2.9.1.2", "$(MCDEV_DISPLAY_VERSION)"):
+            info["MCDevManagerDisplayVersion"] = value
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                tool.display_version(info)
+
     def test_rejects_missing_tag_and_unsafe_url(self):
         with self.assertRaisesRegex(ValueError, "release-tag"):
             tool.download_url("https://example.com/{tag}/app.ipa", "app.ipa", None)

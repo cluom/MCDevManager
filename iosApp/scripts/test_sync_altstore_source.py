@@ -78,6 +78,15 @@ class HistoryTests(unittest.TestCase):
                 self.assertEqual(candidates, [])
                 self.assertEqual(len(report["errors"]), 1)
 
+    def test_history_preserves_custom_display_version(self):
+        self.metadata["marketingVersion"] = "1.2.9.2"
+        candidates, report = self.collect()
+        source = tool.assemble(self.template, candidates, report)
+        entry = source["apps"][0]["versions"][0]
+        self.assertEqual(entry["version"], "1.2.9")
+        self.assertEqual(entry["buildVersion"], "1")
+        self.assertEqual(entry["marketingVersion"], "1.2.9.2")
+
     def test_custom_mirror_must_serve_same_package(self):
         self.template["apps"][0]["versions"][0]["downloadURL"] = "https://mirror.example/{tag}/app.ipa"
         calls = []

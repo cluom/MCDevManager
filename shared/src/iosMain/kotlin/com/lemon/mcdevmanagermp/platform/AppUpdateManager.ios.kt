@@ -15,7 +15,8 @@ actual class AppUpdateManager actual constructor() {
     actual fun getCurrentVersion(): String {
         return try {
             val version =
-                NSBundle.mainBundle.infoDictionary?.get("CFBundleShortVersionString") as? String
+                NSBundle.mainBundle.infoDictionary?.get("MCDevManagerDisplayVersion") as? String
+                    ?: NSBundle.mainBundle.infoDictionary?.get("CFBundleShortVersionString") as? String
             version ?: BuiltInVersion.VERSION
         } catch (_: Exception) {
             BuiltInVersion.VERSION

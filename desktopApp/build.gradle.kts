@@ -32,7 +32,8 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = appName
-            packageVersion = appVersion
+            // Installer formats use three fields; the application and portable ZIP keep the revision.
+            packageVersion = appVersion.split(".").take(3).joinToString(".")
 
             windows {
                 menuGroup = appName

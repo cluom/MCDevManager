@@ -21,12 +21,13 @@ class VersionTests(unittest.TestCase):
             'PRODUCT_NAME=Test\nCURRENT_PROJECT_VERSION=1\nMARKETING_VERSION=1.0\n',
             encoding="utf-8")
 
-    def ipa(self, app_version, build="1"):
+    def ipa(self, app_version, build="1", display=None):
         path = self.root / "test.ipa"
+        info = {"CFBundleShortVersionString": app_version, "CFBundleVersion": build}
+        if display is not None:
+            info["MCDevManagerDisplayVersion"] = display
         with zipfile.ZipFile(path, "w") as archive:
-            archive.writestr("Payload/Test.app/Info.plist", plistlib.dumps({
-                "CFBundleShortVersionString": app_version, "CFBundleVersion": build,
-            }, fmt=plistlib.FMT_BINARY))
+            archive.writestr("Payload/Test.app/Info.plist", plistlib.dumps(info, fmt=plistlib.FMT_BINARY))
         return path
 
     def test_sync_uses_catalog_and_preserves_unrelated_settings(self):
@@ -68,6 +69,36 @@ class VersionTests(unittest.TestCase):
             '[versions]\nversions-name = "1.2.5-yohu"\n', encoding="utf-8")
         with self.assertRaises(ValueError):
             version.project_version(self.root)
+
+    def test_custom_revision_maps_to_compatible_ios_metadata(self):
+        version.bump_revision(self.root)
+        self.assertEqual(version.project_version(self.root), "1.2.5.1")
+        self.assertEqual(version.sync(self.root, "13"), "1.2.5.1")
+        text = self.config.read_text()
+        self.assertIn("MARKETING_VERSION=1.2.5", text)
+        self.assertIn("MCDEV_DISPLAY_VERSION=1.2.5.1", text)
+        self.assertEqual(version.verify(self.ipa("1.2.5", "13", "1.2.5.1"), self.root)[
+            "MCDevManagerDisplayVersion"], "1.2.5.1")
+
+    def test_custom_revision_requires_matching_embedded_display_version(self):
+        version.bump_revision(self.root)
+        for display in (None, "1.2.5", "1.2.5.2"):
+            with self.subTest(display=display), self.assertRaisesRegex(ValueError, "DisplayVersion"):
+                version.verify(self.ipa("1.2.5", display=display), self.root)
+
+    def test_revision_bumps_without_changing_upstream_base(self):
+        self.assertEqual(version.bump_revision(self.root), "1.2.5.1")
+        self.assertEqual(version.bump_revision(self.root), "1.2.5.2")
+        (self.root / "gradle/libs.versions.toml").write_text(
+            '[versions]\nversions-name = "1.2.6"\n', encoding="utf-8")
+        self.assertEqual(version.bump_revision(self.root), "1.2.6.1")
+
+    def test_rejects_zero_revision_and_five_part_version(self):
+        for value in ("1.2.5.0", "1.2.5.1.1"):
+            (self.root / "gradle/libs.versions.toml").write_text(
+                f'[versions]\nversions-name = "{value}"\n', encoding="utf-8")
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                version.project_version(self.root)
 
 
 if __name__ == "__main__":

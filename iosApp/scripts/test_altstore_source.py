@@ -55,6 +55,14 @@ class SourceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "widget is missing"):
             self.inspect(self.ipa(widget=False))
 
+    def test_revision_is_read_from_ipa_and_displayed_in_source(self):
+        self.info["MCDevManagerDisplayVersion"] = "1.2.9.1"
+        feed, manifest = self.make()
+        entry = feed["apps"][0]["versions"][0]
+        self.assertEqual(entry["marketingVersion"], "1.2.9.1")
+        self.assertEqual(entry["version"], "1.2.9")
+        self.assertEqual(manifest["filename"], "MCDevManager-1.2.9.1-10.ipa")
+
     def test_rejects_extension_version_mismatch(self):
         with self.assertRaisesRegex(ValueError, "version does not match"):
             self.inspect(self.ipa(widget_changes={"CFBundleVersion": "9"}))

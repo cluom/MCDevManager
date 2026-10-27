@@ -29,6 +29,15 @@ def version_key(entry):
     return numeric_version(entry["version"]), numeric_version(entry["buildVersion"])
 
 
+def display_version(info):
+    base = info["CFBundleShortVersionString"]
+    display = info.get("MCDevManagerDisplayVersion", base)
+    if display != base and (not isinstance(display, str)
+                            or not re.fullmatch(re.escape(base) + r"\.[1-9]\d*", display)):
+        raise ValueError("Display version must match the bundle version plus a positive revision")
+    return display
+
+
 def signed_permissions(bundle):
     result = subprocess.run(
         ["codesign", "--display", "--entitlements", ":-", str(bundle)],
@@ -64,6 +73,7 @@ def inspect_ipa(path, permissions_reader=signed_permissions):
                     "buildVersion": info["CFBundleVersion"],
                     "minOSVersion": info["MinimumOSVersion"], "size": path.stat().st_size}
         version_key(metadata)
+        metadata["marketingVersion"] = display_version(info)
         numeric_version(metadata["minOSVersion"])
         permissions = set()
         privacy = {}
@@ -106,6 +116,8 @@ def generate(template, metadata, filename, tag=None, date=None, previous=None):
     entry.update({key: metadata[key] for key in
                   ("version", "buildVersion", "minOSVersion", "size")})
     version_key(entry)
+    if metadata.get("marketingVersion"):
+        entry["marketingVersion"] = metadata["marketingVersion"]
     entry["downloadURL"] = url
     entry["date"] = date or datetime.now(timezone.utc).isoformat(timespec="seconds")
     if datetime.fromisoformat(entry["date"].replace("Z", "+00:00")).tzinfo is None:
