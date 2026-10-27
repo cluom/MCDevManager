@@ -102,7 +102,8 @@ def collect(repository, releases, template, include_prereleases=False,
     for release in sorted(releases, key=lambda item: item.get("published_at") or "", reverse=True):
         tag = release["tag_name"]
         if release.get("draft") or not release.get("published_at"):
-            report["skipped"].append({"tag": tag, "reason": "draft or unpublished"})
+            # The report becomes public too; never expose private draft labels.
+            report["skipped"].append({"reason": "draft or unpublished"})
             continue
         if release.get("prerelease") and not include_prereleases:
             report["skipped"].append({"tag": tag, "reason": "prerelease excluded"})

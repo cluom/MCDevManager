@@ -54,6 +54,7 @@ class HistoryTests(unittest.TestCase):
         candidates, report = self.collect(releases)
         self.assertEqual(candidates, [])
         self.assertEqual(len(report["skipped"]), 2)
+        self.assertNotIn("tag", report["skipped"][0])
         candidates, _report = self.collect(releases, include_prereleases=True)
         self.assertEqual(len(candidates), 1)
 
