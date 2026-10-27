@@ -42,6 +42,7 @@ https://raw.githubusercontent.com/BitterLemonn/MCDevManager/altstore-source/sour
 - 枚举全部分页，不仅是最近 30/100 个 Release；没有 IPA 的历史记录记为跳过。
 - 按 IPA 内真实 `version` / `buildVersion` 从新到旧排列，合并保留版本所需的权限声明。
 - **Release 名叫 1.2.9，不代表 IPA 内的版本就是 1.2.9。** 若多个旧包使用相同真实版本号和构建号，源中只能保留一个可区分条目，本实现选择发布时间较新的包，在报告中记录其余冲突及所保留的 Release；不会修改旧包或伪造版本号。
+- 实包检查示例（2026-10-27）：上游 `v1.2.8` 与 `v1.2.9` 的公开 IPA 均为 `CFBundleShortVersionString=1.0`、`CFBundleVersion=1`，两包 ZIP 校验通过。这样的历史包不能仅靠 JSON 恢复为两个不同的真实版本；后续 Release 已通过构建参数写入正确版本来避免继续产生冲突。
 - 不同 Bundle ID 的 IPA 会跳过并报告；下载失败、大小/哈希不匹配、损坏包或镜像内容不一致会阻止发布，避免部分历史悄悄丢失。
 - 每次重新扫描当前已公开的记录，因此撤销发布/删除 Release 后，可从源中移除对应版本。没有任何可用 IPA 时不会用空源覆盖现有源。
 - 默认模式下，新发布的真实版本 1.2.10 会和所有仍可用、版本标识不冲突的历史 IPA 一起收录；旧版本的下载文件必须继续可访问。
