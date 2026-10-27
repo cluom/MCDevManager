@@ -19,6 +19,7 @@ from urllib.request import Request, urlopen
 import zipfile
 
 from generate_altstore_source import download_url, generate, inspect_ipa, version_key
+from altstore_release_notes import load_notes, update_descriptions
 
 
 MAX_IPA_BYTES = 512 * 1024 * 1024
@@ -193,6 +194,7 @@ def main():
     parser.add_argument("--include-prereleases", action="store_true")
     parser.add_argument("--ipa", type=Path, help="Include the new local IPA before its draft is published")
     parser.add_argument("--release-tag", help="Release tag for --ipa")
+    parser.add_argument("--release-notes", type=Path, help="Version-specific descriptions for this source")
     args = parser.parse_args()
     if bool(args.ipa) != bool(args.release_tag):
         parser.error("--ipa and --release-tag must be used together")
@@ -219,6 +221,8 @@ def main():
           f"skipped {len(report['skipped'])}, errors {len(report['errors'])}")
     if report["errors"]:
         raise SystemExit("Source was not written; inspect report.json. Published source is unchanged.")
+    if args.release_notes:
+        source = update_descriptions(source, load_notes(args.release_notes))
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(source, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 

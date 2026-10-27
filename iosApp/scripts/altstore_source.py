@@ -15,6 +15,7 @@ from urllib.parse import quote
 import zipfile
 
 from generate_altstore_source import display_version
+from altstore_release_notes import DEFAULT_NOTES, description_for, load_notes
 
 
 REPOSITORY = "cluom/MCDevManager"
@@ -28,8 +29,8 @@ DESCRIPTION = (
     "网易我的世界开发者内容管理器，基于 BitterLemonn/MCDevManager 的扩展版本。"
     "支持收益与数据追踪、条件抽奖、赠送报告补抽和评论回复；"
     "包含今日/昨日收益及明细翻页的 iOS 小组件。"
-    "使用自己的开发者账号登录；安装时请保留收益小组件扩展。"
-    "本源提供未正式签名的 IPA，需要通过 AltStore 自行签名，不提供账号或证书。"
+    "使用自己的开发者账号登录；更新时使用原安装商店与原 Apple ID 覆盖安装，并保留收益小组件扩展。"
+    "本源提供未正式签名的 IPA，需要通过 AltStore / SideStore 自行签名，不提供账号或证书。"
 )
 
 
@@ -113,7 +114,7 @@ def inspect_ipa(ipa, entitlement_reader=read_entitlements):
                 "appPermissions": {"entitlements": sorted(entitlements), "privacy": privacy}}
 
 
-def make_source(metadata, run_id, date, previous=None):
+def make_source(metadata, run_id, date, previous=None, *, release_notes):
     version_key(metadata)
     if not re.fullmatch(r"[1-9]\d*", run_id):
         raise ValueError("Invalid build run ID")
@@ -125,8 +126,7 @@ def make_source(metadata, run_id, date, previous=None):
     entry = {key: metadata[key] for key in
              ("version", "buildVersion", "minOSVersion", "size")}
     entry.update({"date": date, "downloadURL": f"{RELEASE_BASE}/{tag}/{quote(filename)}",
-                  "localizedDescription": "保留收益小组件与现有扩展功能。"
-                                          "请保留小组件扩展，使用原 Apple ID 覆盖安装。"})
+                  "localizedDescription": description_for(release_notes, display)})
     entry["marketingVersion"] = display
     permissions = deepcopy(metadata["appPermissions"])
     versions = []
@@ -144,8 +144,6 @@ def make_source(metadata, run_id, date, previous=None):
                 if old["downloadURL"] != entry["downloadURL"] or old["size"] != entry["size"]:
                     raise ValueError("Version/build already published by another artifact")
         versions = [old for old in versions if version_key(old) != version_key(entry)]
-        for old in versions:
-            old["localizedDescription"] = entry["localizedDescription"]
         old_permissions = apps[0]["appPermissions"]
         permissions["entitlements"] = sorted(set(permissions["entitlements"])
                                              | set(old_permissions["entitlements"]))
@@ -178,6 +176,7 @@ def main():
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--date", required=True)
     parser.add_argument("--previous", type=Path)
+    parser.add_argument("--release-notes", type=Path, default=DEFAULT_NOTES)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     packages = list(args.ipa_dir.rglob("*.ipa"))
@@ -185,7 +184,8 @@ def main():
         raise ValueError("Expected one Release IPA")
     metadata = inspect_ipa(packages[0])
     previous = json.loads(args.previous.read_text(encoding="utf-8")) if args.previous else None
-    source, manifest = make_source(metadata, args.run_id, args.date, previous)
+    source, manifest = make_source(metadata, args.run_id, args.date, previous,
+                                   release_notes=load_notes(args.release_notes))
     args.output.mkdir(parents=True, exist_ok=True)
     manifest["ipaPath"] = str(packages[0].resolve())
     for filename, value in (("source.json", source), ("manifest.json", manifest)):

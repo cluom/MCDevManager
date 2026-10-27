@@ -43,7 +43,8 @@ jobs:
         run: |
           extra=()
           if [ "$INCLUDE_PRERELEASES" = "true" ]; then extra+=(--include-prereleases); fi
-          python3 iosApp/scripts/sync_altstore_source.py --repository "$REPOSITORY" "${extra[@]}"
+          python3 iosApp/scripts/sync_altstore_source.py --repository "$REPOSITORY" \
+            --release-notes altstore/release-notes.json "${extra[@]}"
       - name: Upload source and inspection report
         if: always()
         uses: actions/upload-artifact@v4

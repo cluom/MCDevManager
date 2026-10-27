@@ -180,6 +180,23 @@ class HistoryTests(unittest.TestCase):
             source = json.loads(output.read_text(encoding="utf-8"))
             self.assertEqual([entry["version"] for entry in source["apps"][0]["versions"]], ["1.2.10", "1.2.9"])
 
+    def test_history_sync_applies_version_specific_notes(self):
+        candidates, report = self.collect()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            template, notes = root / "template.json", root / "notes.json"
+            template.write_text(json.dumps(self.template), encoding="utf-8")
+            notes.write_text(json.dumps({"1.2.9": "Historical changes"}), encoding="utf-8")
+            output = root / "source.json"
+            args = ["sync", "--repository", "example/repo", "--template", str(template),
+                    "--output", str(output), "--report", str(root / "report.json"),
+                    "--release-notes", str(notes)]
+            with patch("sys.argv", args), patch.object(tool, "list_releases", return_value=[]), \
+                    patch.object(tool, "collect", return_value=(candidates, report)):
+                tool.main()
+            source = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(source["apps"][0]["versions"][0]["localizedDescription"], "Historical changes")
+
 
 if __name__ == "__main__":
     unittest.main()

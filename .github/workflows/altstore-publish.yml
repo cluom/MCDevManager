@@ -119,6 +119,7 @@ jobs:
           if [ -n "$PREVIOUS" ]; then ARGS+=(--previous "$PREVIOUS"); fi
           python3 iosApp/scripts/altstore_source.py \
             --ipa-dir build/altstore/ipa --run-id "$BUILD_RUN_ID" \
+            --release-notes altstore/release-notes.json \
             --date "$BUILD_DATE" --output build/altstore/output "${ARGS[@]}"
 
       - name: Publish immutable IPA, then atomically update source branch

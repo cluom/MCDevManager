@@ -47,6 +47,27 @@ git push origin altstore-publish-<成功的iOS运行ID>-<唯一后缀>
 
 ## 验证与回滚
 
+### 版本更新说明（无需重打 IPA）
+
+AltStore / SideStore 的 **What's New** 来自每个 `versions[]` 条目的 `localizedDescription`，不来自应用介绍，也不会自动读取 Git 提交或 Release 正文。
+
+本 fork 使用 [`altstore/release-notes.json`](../altstore/release-notes.json) 按显示版本保存真实用户可见变化：`1.2.9` 和 `1.2.9.1` 分开维护，不把安装注意事项当更新日志。安装商店、原 Apple ID 和保留小组件等提示写在应用介绍及本页；发布说明避免声称未经真机验证的安装结果。
+
+- 发布新 IPA 前补齐对应版本的说明；缺失或空白时停止源发布，不套用其他版本的内容。
+- `altstore_source.py` 只设置本次版本的说明，原样保留其他历史版本条目。
+- **Sync AltStore / SideStore Source** 整理历史时也按各自版本读取这份文件，避免整理后丢失日志。
+- 只修正文案时，先取得 `altstore-source` 分支最新 `source.json`，运行下面的命令，再审查差异并只提交该静态分支的 JSON。不修改 IPA、版本号、构建号、日期、下载地址、大小或权限，不触发 iOS Build。
+
+```shell
+python3 iosApp/scripts/altstore_release_notes.py \
+  --source /path/to/current/source.json \
+  --output /path/to/current/source.json
+```
+
+此命令不会联网、下载或构建 IPA；只修正每条版本说明。所有已收录版本必须有对应说明，任何缺失都不写入输出文件。新增版本不会自动重写历史；需要纠正历史说明时才显式执行此命令。
+
+2026-10-28：修复固定安装提示覆盖全部版本日志的问题，补正 1.2.9.1 的商店更新入口、准备/失败提示和修订号说明，并补齐 1.2.9、1.2.7 各自记录。本次不升版本、不重打包。历史说明依据实际发布源码 `e7bfcc0`、`b2c91f6`，1.2.9.1 依据 `9613d25`、`0f14263`、`d4e4025` 的已实现改动。
+
 ### 应用内跳转更新（定制版 1.2.9.1 起）
 
 应用仍检查 `BitterLemonn/MCDevManager` 的上游版本，因此 `1.2.9.1` 不会屏蔽 `1.2.10` 的提醒。定制修订号递增及真实 iOS 元数据映射见 [iOS 版本说明](ios-version.md)。仅有定制修订更新时，由 AltStore / SideStore 软件源提供更新提醒；应用内暂未增加第二套定制版本通知。
