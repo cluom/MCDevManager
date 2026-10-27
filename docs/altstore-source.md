@@ -47,6 +47,17 @@ git push origin altstore-publish-<成功的iOS运行ID>-<唯一后缀>
 
 ## 验证与回滚
 
+### 2026-10-27 双版本发布验收
+
+- [1.2.7 复用发布](https://github.com/cluom/MCDevManager/actions/runs/40522710489)、[1.2.9 复用发布](https://github.com/cluom/MCDevManager/actions/runs/40523650272) 均成功，没有重新编译。第二次切换官方 `macos-15-intel` 队列，避免 ARM 机器容量不足；仅影响元数据读取，不改应用二进制。
+- [仅整理历史](https://github.com/cluom/MCDevManager/actions/runs/40523857956) 成功：扫描 2 个公开 Release，收录 2 个版本，跳过 0，错误 0；源按 1.2.9（10）、1.2.7（9）排序。
+- 1.2.9 IPA：35,809,380 字节，SHA-256 `14e49e57ba3a58d1ec3bf1130d4523b509fc7422ff11bb1b86193a0efdbc6739`。
+- 1.2.7 IPA：35,516,591 字节，SHA-256 `3bc0f5c5ac31f7d6cc9872d172e9403651c4c8cc449d9cc55aa22342cfca4337`。
+- 两包最低 iOS 均为 18.2，收益小组件与 App Group 检查通过；发布流程先匿名下载核验，再更新源。最终 `report.json` 再次下载两个公开 IPA 核验哈希与元信息。
+- 公开 Release 标题、正文与当前软件源均使用中性 MCDevManager 名称，不使用工作室品牌。
+- 上游 PR #54 的修复后 [Linux/macOS 检查](https://github.com/BitterLemonn/MCDevManager/actions/runs/40522231510) 均通过。此前一次失败来自测试复制受保护系统文件属性，另一次来自托管 macOS 无可用机器；不得混同为应用构建失败。
+- 尚未进行 iPhone 添加源、安装、刷新及小组件真机验证。
+
 ```shell
 python3 -B -m unittest discover -s iosApp/scripts -p 'test_*.py'
 ```
