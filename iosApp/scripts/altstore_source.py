@@ -23,7 +23,7 @@ RELEASE_BASE = f"https://github.com/{REPOSITORY}/releases/download"
 SOURCE_BASE = f"https://raw.githubusercontent.com/{REPOSITORY}/{SOURCE_BRANCH}"
 SOURCE_URL = f"{SOURCE_BASE}/source.json"
 DESCRIPTION = (
-    "网易我的世界开发者内容管理器，基于 BitterLemonn/MCDevManager 的雨花工作室定制版。"
+    "网易我的世界开发者内容管理器，基于 BitterLemonn/MCDevManager 的扩展版本。"
     "支持收益与数据追踪、条件抽奖、赠送报告补抽和评论回复；"
     "包含今日/昨日收益及明细翻页的 iOS 小组件。"
     "使用自己的开发者账号登录；安装时请保留收益小组件扩展。"
@@ -121,7 +121,7 @@ def make_source(metadata, run_id, date, previous=None):
     entry = {key: metadata[key] for key in
              ("version", "buildVersion", "minOSVersion", "size")}
     entry.update({"date": date, "downloadURL": f"{RELEASE_BASE}/{tag}/{quote(filename)}",
-                  "localizedDescription": "雨花工作室定制版，保留收益小组件与现有定制功能。"
+                  "localizedDescription": "保留收益小组件与现有扩展功能。"
                                           "请保留小组件扩展，使用原 Apple ID 覆盖安装。"})
     permissions = deepcopy(metadata["appPermissions"])
     versions = []
@@ -139,12 +139,14 @@ def make_source(metadata, run_id, date, previous=None):
                 if old["downloadURL"] != entry["downloadURL"] or old["size"] != entry["size"]:
                     raise ValueError("Version/build already published by another artifact")
         versions = [old for old in versions if version_key(old) != version_key(entry)]
+        for old in versions:
+            old["localizedDescription"] = entry["localizedDescription"]
         old_permissions = apps[0]["appPermissions"]
         permissions["entitlements"] = sorted(set(permissions["entitlements"])
                                              | set(old_permissions["entitlements"]))
         permissions["privacy"] = {**old_permissions["privacy"], **permissions["privacy"]}
     source = {
-        "name": "雨花工作室 · MCDevManager",
+        "name": "MCDevManager",
         "identifier": "cn.cluom.mcdevmanager.altstore",
         "sourceURL": SOURCE_URL,
         "subtitle": "MCDevManager iOS 定制版与收益小组件",
@@ -152,7 +154,7 @@ def make_source(metadata, run_id, date, previous=None):
         "iconURL": f"{SOURCE_BASE}/icon.png",
         "tintColor": "9D85C4",
         "apps": [{"name": "MCDevManager", "bundleIdentifier": BUNDLE_ID,
-                  "developerName": "BitterLemonn / 雨花工作室定制",
+                  "developerName": "BitterLemonn / cluom",
                   "localizedDescription": DESCRIPTION,
                   "iconURL": f"{SOURCE_BASE}/icon.png",
                   "tintColor": "9D85C4", "category": "developer",

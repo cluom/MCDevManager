@@ -1,6 +1,6 @@
 # AltStore / SideStore 软件源
 
-本源发布 `cluom/MCDevManager` 的雨花工作室定制版，不是 AltStore PAL，也不是上游官方发布渠道。用户在 2026-10-27 明确允许 IPA 公开发布。
+本源发布 `cluom/MCDevManager` 的扩展版本，不是 AltStore PAL，也不是上游官方发布渠道。用户在 2026-10-27 明确允许 IPA 公开发布；公开发布与软件源使用中性 MCDevManager 文案。
 
 ## 添加源
 
