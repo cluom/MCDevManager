@@ -7,6 +7,8 @@ import com.lemon.mcdevmanagermp.utils.extension.IUiState
 
 data class UpdateState(
     val isChecking: Boolean = false,
+    val isOpeningAltStore: Boolean = false,
+    val altStoreMessage: String? = null,
     val isDownloading: Boolean = false,
     val downloadProgress: Float = 0f,
     val downloadSpeedBps: Long = 0L,
@@ -25,6 +27,7 @@ sealed interface UpdateAction : IUiAction {
     data object InstallUpdate : UpdateAction
     data object RestartApp : UpdateAction
     data object OpenInBrowser : UpdateAction
+    data object OpenInAltStore : UpdateAction
 }
 
 sealed interface UpdateEffect : IUiEffect {

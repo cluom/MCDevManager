@@ -202,10 +202,17 @@ fun UpdateDialog(
                         // iOS: 提示
                         if (result.strategy == UpdateStrategy.OPEN_BROWSER) {
                             Text(
-                                text = "iOS 不支持应用内更新，请前往 GitHub 下载最新版本。",
+                                text = "将先检查定制软件源，再通过 AltStore 签名安装。请使用原 Apple ID，并保留小组件扩展。",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            state.altStoreMessage?.let { message ->
+                                Text(message, style = MaterialTheme.typography.bodySmall)
+                            }
+                            if (state.isOpeningAltStore) LinearProgressIndicator(Modifier.fillMaxWidth())
+                            TextButton(onClick = { onAction(UpdateAction.OpenInBrowser) }) {
+                                Text("查看定制版发布页面")
+                            }
                         }
                     }
                 }
@@ -230,8 +237,11 @@ fun UpdateDialog(
                     val result = state.checkResult
                     when (result.strategy) {
                         UpdateStrategy.OPEN_BROWSER -> {
-                            Button(onClick = { onAction(UpdateAction.OpenInBrowser) }) {
-                                Text("前往 GitHub 下载")
+                            Button(
+                                onClick = { onAction(UpdateAction.OpenInAltStore) },
+                                enabled = !state.isOpeningAltStore
+                            ) {
+                                Text(if (state.isOpeningAltStore) "正在准备…" else "用 AltStore 更新")
                             }
                         }
 

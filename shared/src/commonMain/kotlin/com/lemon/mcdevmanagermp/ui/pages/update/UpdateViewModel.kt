@@ -1,16 +1,20 @@
 package com.lemon.mcdevmanagermp.ui.pages.update
 
 import androidx.lifecycle.viewModelScope
+import com.lemon.mcdevmanagermp.data.repository.AltStoreSourceRepository
 import com.lemon.mcdevmanagermp.data.repository.UpdateRepositoryImpl
 import com.lemon.mcdevmanagermp.domain.update.CheckUpdateResult
 import com.lemon.mcdevmanagermp.domain.update.CheckUpdateUseCase
+import com.lemon.mcdevmanagermp.domain.update.AltStoreUpdate
 import com.lemon.mcdevmanagermp.platform.AppUpdateManager
 import com.lemon.mcdevmanagermp.platform.DownloadNotifier
 import com.lemon.mcdevmanagermp.platform.UpdatePreferences
 import com.lemon.mcdevmanagermp.platform.UpdateStrategy
 import com.lemon.mcdevmanagermp.platform.restartApp
+import com.lemon.mcdevmanagermp.platform.openAltStoreInstall
 import com.lemon.mcdevmanagermp.ui.base.BaseViewModel
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
@@ -28,6 +32,7 @@ class UpdateViewModel : BaseViewModel<UpdateState, UpdateAction, UpdateEffect>(U
     private val notifier = DownloadNotifier()
     private val updatePreferences = UpdatePreferences()
     private var downloadJob: Job? = null
+    private var altStoreJob: Job? = null
     private var downloadedFilePath: String? = null
     private var lastProgressMark: TimeMark? = null
     private var lastProgressBytes = 0L
@@ -41,6 +46,7 @@ class UpdateViewModel : BaseViewModel<UpdateState, UpdateAction, UpdateEffect>(U
             UpdateAction.InstallUpdate -> installUpdate()
             UpdateAction.RestartApp -> restartApp()
             UpdateAction.OpenInBrowser -> openInBrowser()
+            UpdateAction.OpenInAltStore -> openInAltStore()
         }
     }
 
@@ -49,7 +55,7 @@ class UpdateViewModel : BaseViewModel<UpdateState, UpdateAction, UpdateEffect>(U
         if (!isManual && sessionDismissed) return
 
         // 手动检查时立即显示 dialog，自动检查时静默进行
-        setState { copy(isChecking = true, showDialog = isManual, errorMessage = null) }
+        setState { copy(isChecking = true, showDialog = isManual, errorMessage = null, altStoreMessage = null) }
         viewModelScope.launch {
             when (val result = checkUpdateUseCase()) {
                 is CheckUpdateResult.UpdateAvailable -> {
@@ -174,15 +180,42 @@ class UpdateViewModel : BaseViewModel<UpdateState, UpdateAction, UpdateEffect>(U
 
     private fun openInBrowser() {
         val result = state.value.checkResult as? CheckUpdateResult.UpdateAvailable ?: return
-        if (result.downloadUrl.isNotEmpty()) {
+        if (result.strategy == UpdateStrategy.OPEN_BROWSER) {
+            sendEffect(UpdateEffect.OpenUrl(AltStoreUpdate.RELEASES_URL))
+        } else if (result.downloadUrl.isNotEmpty()) {
             sendEffect(UpdateEffect.OpenUrl(result.downloadUrl))
         } else {
             sendEffect(UpdateEffect.OpenUrl("https://github.com/BitterLemonn/MCDevManager/releases/latest"))
         }
     }
 
+    private fun openInAltStore() {
+        val result = state.value.checkResult as? CheckUpdateResult.UpdateAvailable ?: return
+        if (result.strategy != UpdateStrategy.OPEN_BROWSER || state.value.isOpeningAltStore) return
+        setState { copy(isOpeningAltStore = true, altStoreMessage = null) }
+        altStoreJob = viewModelScope.launch {
+            try {
+                val update = AltStoreSourceRepository().findUpdate(result.currentVersion, result.latestVersion)
+                if (update == null) {
+                    setState { copy(altStoreMessage = "上游 ${result.latestVersion} 已发布，但定制软件源尚无对应新版。请等待合并打包，避免丢失小组件等功能。") }
+                } else if (openAltStoreInstall(update.downloadUrl)) {
+                    setState { copy(altStoreMessage = "已交给 AltStore 处理 ${update.displayVersion}，请在那里确认签名与安装。") }
+                } else {
+                    setState { copy(altStoreMessage = "无法打开 AltStore，请确认已安装 AltStore Classic，或在发布页面手动下载。") }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                setState { copy(altStoreMessage = "读取定制软件源失败，请检查网络后重试，或查看发布页面。") }
+            } finally {
+                setState { copy(isOpeningAltStore = false) }
+            }
+        }
+    }
+
     private fun dismissDialog() {
         downloadJob?.cancel()
+        altStoreJob?.cancel()
         notifier.cancelNotification()
         sessionDismissed = true
         setState { copy(showDialog = false) }
