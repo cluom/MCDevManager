@@ -123,7 +123,9 @@ class AltStoreSourceTests(unittest.TestCase):
                     "CFBundleShortVersionString": "1.0", "MinimumOSVersion": "15.0"}
             (bundle / "Info.plist").write_bytes(plistlib.dumps(info))
             executable = bundle / "Test"
-            shutil.copy2("/usr/bin/true", executable)
+            # Do not copy macOS protected system flags from the fixture binary.
+            shutil.copyfile("/usr/bin/true", executable)
+            executable.chmod(0o755)
             subprocess.run(["codesign", "--remove-signature", str(executable)], check=True)
             self.assertEqual(tool.signed_permissions(bundle), {})
             permissions = root / "permissions.plist"
