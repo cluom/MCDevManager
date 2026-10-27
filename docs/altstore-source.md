@@ -51,15 +51,15 @@ git push origin altstore-publish-<成功的iOS运行ID>-<唯一后缀>
 
 应用仍检查 `BitterLemonn/MCDevManager` 的上游版本，因此 `1.2.9.1` 不会屏蔽 `1.2.10` 的提醒。定制修订号递增及真实 iOS 元数据映射见 [iOS 版本说明](ios-version.md)。仅有定制修订更新时，由 AltStore / SideStore 软件源提供更新提醒；应用内暂未增加第二套定制版本通知。
 
-iOS 弹窗的「用 AltStore 更新」先读取本 fork 的公开 `source.json`，只接受正确 Bundle ID、版本不低于目标上游且高于当前版本、下载地址属于本 fork GitHub Release 的 IPA。若尚未发布对应定制包，会明确提示等待合并打包，不自动改装上游原包或退回旧包。读取源使用独立网络客户端，不携带网易登录 Cookie。
+iOS 弹窗分别提供「用 AltStore 更新」和「用 SideStore 更新」。两者先读取本 fork 的公开 `source.json`，只接受正确 Bundle ID、版本不低于目标上游且高于当前版本、下载地址属于本 fork GitHub Release 的 IPA。若尚未发布对应定制包，会明确提示等待合并打包，不自动改装上游原包或退回旧包。读取源使用独立网络客户端，不携带网易登录 Cookie。
 
-找到包后，完整编码下载地址，使用 `altstore-classic://install?url=...` 打开；系统无法交付时再尝试 `altstore://install?url=...`。采用 iOS 带完成回调的打开接口，不使用旧版同步 `openURL`。界面提供准备进度、失败提示和定制版发布页备用入口。
+找到包后，完整编码下载地址：AltStore 按钮使用 `altstore-classic://install?url=...`，系统无法交付时再尝试旧版 `altstore://install?url=...`；SideStore 按钮仅使用官方 `sidestore://install?url=...`，不自动切换商店。采用 iOS 带完成回调的打开接口，不使用旧版同步 `openURL`。界面提供准备进度、失败提示和定制版发布页备用入口；准备期间禁用两个按钮，避免重复请求。
 
-系统返回已打开，仅表示把链接交给了 AltStore，**不表示签名或安装成功**。用户仍需在 AltStore 确认，使用原 Apple ID 并保留小组件扩展。本按钮目前只接 AltStore；源格式可供 SideStore 使用，不代表此按钮已经接入 SideStore 专属跳转。
+系统返回已打开，仅表示把链接交给了所选商店，**不表示签名或安装成功**。用户仍需在商店确认，优先使用原安装商店及原 Apple ID，并保留小组件扩展；按钮本身不迁移两家商店各自的安装记录。
 
-本地共享代码及选择/安全校验测试通过；Windows 无法运行 iOS 原生编译与真机跳转，需下次云端构建后验证：已安装 AltStore、未安装 AltStore、源访问失败、上游新版尚未发布到定制源四种情况。尚未打包或改写已发布的 1.2.7 / 1.2.9 IPA，也未把旧包伪装成 1.2.9.1。
+本地共享代码及选择/安全校验测试通过；Windows 无法运行 iOS 原生编译与真机跳转，需云端构建后分别验证：已安装所选商店、未安装所选商店、源访问失败、上游新版尚未发布到定制源四种情况。历史 1.2.7 / 1.2.9 IPA 保持原样，不能把旧包伪装成 1.2.9.1。
 
-依据：[AltStore 安装 URL scheme](https://noah978.gitbook.io/altstore-docs/url-schemes)、[Classic scheme 与 marketingVersion 发布记录](https://faq.altstore.io/release-notes/altstore)。
+依据：[AltStore 安装 URL scheme](https://noah978.gitbook.io/altstore-docs/url-schemes)、[SideStore 官方 URL Schema](https://docs.sidestore.io/docs/advanced/url-schema)、[Classic scheme 与 marketingVersion 发布记录](https://faq.altstore.io/release-notes/altstore)。
 
 ### 2026-10-27 双版本发布验收
 

@@ -1,6 +1,7 @@
 package com.lemon.mcdevmanagermp
 
 import com.lemon.mcdevmanagermp.domain.update.AltStoreUpdate
+import com.lemon.mcdevmanagermp.domain.update.SideloadStore
 import io.ktor.http.Url
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -77,7 +78,9 @@ class AltStoreUpdateTest {
         for (value in invalid) {
             assertFalse(AltStoreUpdate.isAllowedDownload(value), value)
             assertNull(AltStoreUpdate.select(source(entry("1.2.10", downloadUrl = value)), "1.2.9.1", "1.2.10"))
-            assertFailsWith<IllegalArgumentException> { AltStoreUpdate.installUrls(value) }
+            for (store in SideloadStore.entries) {
+                assertFailsWith<IllegalArgumentException> { AltStoreUpdate.installUrls(value, store) }
+            }
         }
     }
 
@@ -122,5 +125,15 @@ class AltStoreUpdateTest {
             })
         }.toString()
         assertFailsWith<Exception> { AltStoreUpdate.select(duplicated, "1.2.9.1", "1.2.10") }
+    }
+
+    @Test
+    fun sideStoreUsesItsOfficialInstallSchemeWithoutSwitchingStores() {
+        val links = AltStoreUpdate.installUrls(url, SideloadStore.SIDESTORE)
+        assertEquals(1, links.size)
+        assertTrue(links.single().startsWith("sidestore://install?url=https%3A%2F%2F"))
+        assertEquals(url, Url(links.single()).parameters["url"])
+        assertEquals(setOf("url"), Url(links.single()).parameters.names())
+        assertTrue(AltStoreUpdate.installUrls(url, SideloadStore.ALTSTORE).none { it.startsWith("sidestore:") })
     }
 }

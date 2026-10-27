@@ -52,10 +52,13 @@ object AltStoreUpdate {
             assetPath.last().endsWith(".ipa")
     }.getOrDefault(false)
 
-    fun installUrls(downloadUrl: String): List<String> {
+    fun installUrls(downloadUrl: String, store: SideloadStore = SideloadStore.ALTSTORE): List<String> {
         require(isAllowedDownload(downloadUrl)) { "更新包地址不属于可信的定制发布。" }
         val encoded = downloadUrl.encodeURLParameter()
-        return listOf("altstore-classic://install?url=$encoded", "altstore://install?url=$encoded")
+        return when (store) {
+            SideloadStore.ALTSTORE -> listOf("altstore-classic://install?url=$encoded", "altstore://install?url=$encoded")
+            SideloadStore.SIDESTORE -> listOf("sidestore://install?url=$encoded")
+        }
     }
 
     data class Package(val displayVersion: String, val downloadUrl: String)
@@ -68,4 +71,9 @@ object AltStoreUpdate {
 
     @Serializable
     private data class Version(val version: String, val downloadURL: String, val marketingVersion: String? = null)
+}
+
+enum class SideloadStore(val displayName: String) {
+    ALTSTORE("AltStore"),
+    SIDESTORE("SideStore")
 }

@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.lemon.mcdevmanagermp.domain.update.CheckUpdateResult
+import com.lemon.mcdevmanagermp.domain.update.SideloadStore
 import com.lemon.mcdevmanagermp.platform.UpdateStrategy
 import com.lemon.mcdevmanagermp.ui.components.RichMarkdownText
 import com.lemon.mcdevmanagermp.utils.extension.formatDecimal
@@ -202,14 +203,14 @@ fun UpdateDialog(
                         // iOS: 提示
                         if (result.strategy == UpdateStrategy.OPEN_BROWSER) {
                             Text(
-                                text = "将先检查定制软件源，再通过 AltStore 签名安装。请使用原 Apple ID，并保留小组件扩展。",
+                                text = "将先检查定制软件源，再通过所选商店签名安装。请优先使用原安装商店和 Apple ID，并保留小组件扩展。",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            state.altStoreMessage?.let { message ->
+                            state.storeMessage?.let { message ->
                                 Text(message, style = MaterialTheme.typography.bodySmall)
                             }
-                            if (state.isOpeningAltStore) LinearProgressIndicator(Modifier.fillMaxWidth())
+                            if (state.openingStore != null) LinearProgressIndicator(Modifier.fillMaxWidth())
                             TextButton(onClick = { onAction(UpdateAction.OpenInBrowser) }) {
                                 Text("查看定制版发布页面")
                             }
@@ -237,11 +238,16 @@ fun UpdateDialog(
                     val result = state.checkResult
                     when (result.strategy) {
                         UpdateStrategy.OPEN_BROWSER -> {
-                            Button(
-                                onClick = { onAction(UpdateAction.OpenInAltStore) },
-                                enabled = !state.isOpeningAltStore
-                            ) {
-                                Text(if (state.isOpeningAltStore) "正在准备…" else "用 AltStore 更新")
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                for (store in SideloadStore.entries) {
+                                    Button(
+                                        onClick = { onAction(UpdateAction.OpenInStore(store)) },
+                                        enabled = state.openingStore == null,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(if (state.openingStore == store) "正在准备…" else "用 ${store.displayName} 更新")
+                                    }
+                                }
                             }
                         }
 

@@ -1,14 +1,15 @@
 package com.lemon.mcdevmanagermp.ui.pages.update
 
 import com.lemon.mcdevmanagermp.domain.update.CheckUpdateResult
+import com.lemon.mcdevmanagermp.domain.update.SideloadStore
 import com.lemon.mcdevmanagermp.utils.extension.IUiAction
 import com.lemon.mcdevmanagermp.utils.extension.IUiEffect
 import com.lemon.mcdevmanagermp.utils.extension.IUiState
 
 data class UpdateState(
     val isChecking: Boolean = false,
-    val isOpeningAltStore: Boolean = false,
-    val altStoreMessage: String? = null,
+    val openingStore: SideloadStore? = null,
+    val storeMessage: String? = null,
     val isDownloading: Boolean = false,
     val downloadProgress: Float = 0f,
     val downloadSpeedBps: Long = 0L,
@@ -27,7 +28,7 @@ sealed interface UpdateAction : IUiAction {
     data object InstallUpdate : UpdateAction
     data object RestartApp : UpdateAction
     data object OpenInBrowser : UpdateAction
-    data object OpenInAltStore : UpdateAction
+    data class OpenInStore(val store: SideloadStore) : UpdateAction
 }
 
 sealed interface UpdateEffect : IUiEffect {
