@@ -67,8 +67,17 @@ jobs:
             }
             const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts,
               {...repo, run_id: Number(runId), per_page: 100});
-            const ipa = artifacts.filter(a => a.name.startsWith('ios-ipa-') && !a.expired);
+            const ipa = artifacts.filter(a => (a.name === 'ios-ipa' || a.name.startsWith('ios-ipa-')) && !a.expired);
             if (ipa.length !== 1) throw new Error('Expected exactly one available IPA artifact');
+            // Fork default branch differs from the app source branch. GitHub requires a
+            // user with workflow-write authority to create these Releases; do not bypass it.
+            try {
+              const {data: release} = await github.rest.repos.getReleaseByTag({...repo, tag: `altstore-ios-${runId}`});
+              if (release.draft) throw new Error('Publish the prepared Release before uploading IPA');
+            } catch (error) {
+              if (error.status === 404) throw new Error(`Prepare a public Release for tag altstore-ios-${runId} using your GitHub account first. No IPA was downloaded or published.`);
+              throw error;
+            }
             fs.mkdirSync('build/altstore', {recursive: true});
             let previous = '';
             let sourceHead = '';
@@ -129,22 +138,11 @@ jobs:
             const bytes = fs.readFileSync(manifest.ipaPath);
             const digest = crypto.createHash('sha256').update(bytes).digest('hex');
             if (digest !== manifest.sha256 || bytes.length !== manifest.size) throw new Error('IPA changed after inspection');
-            let release;
-            try {
-              ({data: release} = await github.rest.repos.getReleaseByTag({...repo, tag: manifest.tag}));
-            } catch (error) {
-              if (error.status !== 404) throw error;
-              ({data: release} = await github.rest.repos.createRelease({...repo,
-                tag_name: manifest.tag, target_commitish: process.env.BUILD_SHA,
-                name: `MCDevManager iOS ${manifest.version} (${manifest.buildVersion}) · 雨花定制版`,
-                body: `基于上游的雨花工作室定制版，包含收益小组件与现有定制功能。\n\n` +
-                  `本包需要自行签名；使用原 Apple ID 覆盖安装，并保留收益小组件扩展。\n\n` +
-                  `AltStore 源：${manifest.sourceURL}\n\n` +
-                  `构建：https://github.com/cluom/MCDevManager/actions/runs/${process.env.BUILD_RUN_ID}\n\n` +
-                  `源码：${process.env.BUILD_SHA}\n\nSHA-256：\`${manifest.sha256}\``,
-                draft: false, prerelease: false, make_latest: 'false'}));
-            }
+            const {data: release} = await github.rest.repos.getReleaseByTag({...repo, tag: manifest.tag});
             if (release.draft) throw new Error('Refusing to overwrite a draft release');
+            let target = (await github.rest.git.getRef({...repo, ref: `tags/${manifest.tag}`})).data.object;
+            while (target.type === 'tag') target = (await github.rest.git.getTag({...repo, tag_sha: target.sha})).data.object;
+            if (target.sha !== process.env.BUILD_SHA) throw new Error('Release tag does not point to the original build source');
             async function immutableUpload(name, data, contentType) {
               const existing = release.assets.find(a => a.name === name);
               if (existing) {

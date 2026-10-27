@@ -23,7 +23,7 @@ python3 -B -m unittest discover -s iosApp/scripts -p 'test_*.py'
 
 除原有手动入口外，推送 `ios-build-*` 标签也会触发独立 iOS Release 构建。此入口可复用已有 Git SSH 登录，不需要另存 GitHub API 令牌。标签后缀作为产物文件名标记，包内版本仍同步 `versions-name`；构建号仍取 `GITHUB_RUN_NUMBER`。
 
-每次使用新标签，例如 `ios-build-1.2.9-widget-lottery-20261026-<短提交号>`。普通分支推送不触发打包，也不触发 Android / Windows / macOS 构建。下载 ZIP 继续带 `run_id` 和 `run_attempt`，避免与旧文件重名。2026-10-27 起，Release 构建成功后会额外公开发布 IPA 并更新 [AltStore 源](altstore-source.md)；Debug 构建不发布。
+每次使用新标签，例如 `ios-build-1.2.9-widget-lottery-20261026-<短提交号>`。普通分支推送不触发打包，也不触发 Android / Windows / macOS 构建。下载 ZIP 继续带 `run_id` 和 `run_attempt`，避免与旧文件重名。2026-10-27 起，Release 构建成功后会调用 [AltStore / SideStore 发布流程](altstore-source.md)；当前 fork 须先在网页准备指向原构建源码的公开 Release，未准备时发布任务停止，但已有构建产物保留。Debug 构建不发布。
 
 ## iOS 1.2.9 定制包（2026-10-26）
 
