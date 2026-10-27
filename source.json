@@ -1,0 +1,38 @@
+{
+  "name": "雨花工作室 · MCDevManager",
+  "identifier": "cn.cluom.mcdevmanager.altstore",
+  "sourceURL": "https://raw.githubusercontent.com/cluom/MCDevManager/altstore-source/source.json",
+  "subtitle": "MCDevManager iOS 定制版与收益小组件",
+  "website": "https://github.com/cluom/MCDevManager",
+  "iconURL": "https://raw.githubusercontent.com/cluom/MCDevManager/altstore-source/icon.png",
+  "tintColor": "9D85C4",
+  "apps": [
+    {
+      "name": "MCDevManager",
+      "bundleIdentifier": "com.lemon.mcdevmanagermp.MCDevManagerMPR",
+      "developerName": "BitterLemonn / 雨花工作室定制",
+      "localizedDescription": "网易我的世界开发者内容管理器，基于 BitterLemonn/MCDevManager 的雨花工作室定制版。支持收益与数据追踪、条件抽奖、赠送报告补抽和评论回复；包含今日/昨日收益及明细翻页的 iOS 小组件。使用自己的开发者账号登录；安装时请保留收益小组件扩展。本源提供未正式签名的 IPA，需要通过 AltStore 自行签名，不提供账号或证书。",
+      "iconURL": "https://raw.githubusercontent.com/cluom/MCDevManager/altstore-source/icon.png",
+      "tintColor": "9D85C4",
+      "category": "developer",
+      "versions": [
+        {
+          "version": "1.2.7",
+          "buildVersion": "9",
+          "minOSVersion": "18.2",
+          "size": 35516591,
+          "date": "2026-10-05T13:12:07Z",
+          "downloadURL": "https://github.com/cluom/MCDevManager/releases/download/altstore-ios-37314981699/MCDevManager-1.2.7-9.ipa",
+          "localizedDescription": "雨花工作室定制版，保留收益小组件与现有定制功能。请保留小组件扩展，使用原 Apple ID 覆盖安装。"
+        }
+      ],
+      "appPermissions": {
+        "entitlements": [
+          "com.apple.security.application-groups"
+        ],
+        "privacy": {}
+      }
+    }
+  ],
+  "news": []
+}
