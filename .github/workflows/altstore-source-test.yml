@@ -30,4 +30,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -B -m unittest discover -s iosApp/scripts -p 'test_*altstore*.py' -v
+      - name: Run tests and expose failure details in check annotations
+        shell: bash
+        run: |
+          if python -B -m unittest discover -s iosApp/scripts -p 'test_*altstore*.py' -v > test-output.log 2>&1; then
+            cat test-output.log
+          else
+            cat test-output.log
+            python -c "from pathlib import Path; text = Path('test-output.log').read_text()[-12000:]; print('::error title=Source test failure::' + text.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A'))"
+            exit 1
+          fi
