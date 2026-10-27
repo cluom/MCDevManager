@@ -221,8 +221,11 @@ def main():
           f"skipped {len(report['skipped'])}, errors {len(report['errors'])}")
     if report["errors"]:
         raise SystemExit("Source was not written; inspect report.json. Published source is unchanged.")
-    if args.release_notes:
-        source = update_descriptions(source, load_notes(args.release_notes))
+    # Older Release workflows also check out this maintained generator, but may
+    # not yet pass --release-notes. Discover notes next to their source template.
+    notes_path = args.release_notes or args.template.with_name("release-notes.json")
+    if args.release_notes or notes_path.exists():
+        source = update_descriptions(source, load_notes(notes_path))
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(source, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 

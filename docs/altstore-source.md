@@ -55,7 +55,7 @@ AltStore / SideStore 的 **What's New** 来自每个 `versions[]` 条目的 `loc
 
 - 发布新 IPA 前补齐对应版本的说明；缺失或空白时停止源发布，不套用其他版本的内容。
 - `altstore_source.py` 只设置本次版本的说明，原样保留其他历史版本条目。
-- **Sync AltStore / SideStore Source** 整理历史时也按各自版本读取这份文件，避免整理后丢失日志。
+- **Sync AltStore / SideStore Source** 整理历史时也按各自版本读取这份文件，避免整理后丢失日志。未传 `--release-notes` 的旧工作流会自动读取模板同目录的 `release-notes.json`；通用模板旁没有该文件时保持原行为。
 - 只修正文案时，先取得 `altstore-source` 分支最新 `source.json`，运行下面的命令，再审查差异并只提交该静态分支的 JSON。不修改 IPA、版本号、构建号、日期、下载地址、大小或权限，不触发 iOS Build。
 
 ```shell

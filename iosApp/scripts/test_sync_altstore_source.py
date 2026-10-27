@@ -181,16 +181,23 @@ class HistoryTests(unittest.TestCase):
             self.assertEqual([entry["version"] for entry in source["apps"][0]["versions"]], ["1.2.10", "1.2.9"])
 
     def test_history_sync_applies_version_specific_notes(self):
+        self.check_history_sync_notes(explicit=True)
+
+    def test_old_workflow_discovers_notes_beside_template(self):
+        self.check_history_sync_notes(explicit=False)
+
+    def check_history_sync_notes(self, explicit):
         candidates, report = self.collect()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            template, notes = root / "template.json", root / "notes.json"
+            template, notes = root / "template.json", root / "release-notes.json"
             template.write_text(json.dumps(self.template), encoding="utf-8")
             notes.write_text(json.dumps({"1.2.9": "Historical changes"}), encoding="utf-8")
             output = root / "source.json"
             args = ["sync", "--repository", "example/repo", "--template", str(template),
-                    "--output", str(output), "--report", str(root / "report.json"),
-                    "--release-notes", str(notes)]
+                    "--output", str(output), "--report", str(root / "report.json")]
+            if explicit:
+                args.extend(["--release-notes", str(notes)])
             with patch("sys.argv", args), patch.object(tool, "list_releases", return_value=[]), \
                     patch.object(tool, "collect", return_value=(candidates, report)):
                 tool.main()
