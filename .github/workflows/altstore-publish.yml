@@ -29,7 +29,8 @@ concurrency:
 jobs:
   publish:
     if: github.repository == 'cluom/MCDevManager'
-    runs-on: macos-latest
+    # Metadata inspection does not require ARM; avoid its current capacity queue.
+    runs-on: macos-15-intel
     timeout-minutes: 15
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
