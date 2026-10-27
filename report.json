@@ -1,7 +1,7 @@
 {
   "repository": "cluom/MCDevManager",
   "includePrereleases": false,
-  "scannedReleases": 2,
+  "scannedReleases": 3,
   "included": [
     {
       "tag": "altstore-ios-40298009421",
@@ -20,6 +20,11 @@
       "sha256": "3bc0f5c5ac31f7d6cc9872d172e9403651c4c8cc449d9cc55aa22342cfca4337"
     }
   ],
-  "skipped": [],
+  "skipped": [
+    {
+      "tag": "altstore-ios-40531274870",
+      "reason": "no IPA asset"
+    }
+  ],
   "errors": []
 }
