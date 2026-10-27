@@ -41,7 +41,9 @@ git push origin altstore-publish-<成功的iOS运行ID>-<唯一后缀>
 
 ## 仅整理历史（不构建）
 
-`altstore/source.template.json` 复用上游 PR 的通用模板，仅将 `downloadURL` 改为本 fork 的 Release 资产地址。`sync_altstore_source.py` 分页扫描公开 Releases，从实际 IPA 读取版本、大小及权限；排除草稿，默认排除预发布。下载或校验失败不覆盖已有源。
+`altstore/source.template.json` 从上游 PR 的通用模板派生为本 fork 的配置：`website` 指向 `https://github.com/cluom/MCDevManager`，`iconURL` 使用本仓库 `altstore-source/icon.png`，`developerName` 保留上游署名并标明定制维护者 `BitterLemonn / cluom`，`downloadURL` 指向本 fork 的 Release 资产。三个身份字段须与 `altstore_source.py` 的直接发布路径一致，避免历史整理覆盖成上游信息；回归测试会检查这项约束，不改变给上游提交的 PR 分支。
+
+`sync_altstore_source.py` 分页扫描公开 Releases，从实际 IPA 读取版本、大小及权限；排除草稿，默认排除预发布。下载或校验失败不覆盖已有源。
 
 当前维护分支为 `codex/conditional-gift-lottery`，默认分支暂不变。推送指向当前工具提交的唯一 `altstore-sync-*` 标签，可运行 **Sync AltStore / SideStore Source**，只整理和发布源，不启动 iOS 编译。工作流进入默认分支后也可在 Actions 页面手动执行。GitHub 默认令牌创建的事件不保证触发后续工作流，首次两包发布后需显式运行一次整理任务。
 

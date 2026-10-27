@@ -1,4 +1,5 @@
 from copy import deepcopy
+import json
 from pathlib import Path
 import plistlib
 import tempfile
@@ -101,6 +102,16 @@ class SourceTests(unittest.TestCase):
         self.assertEqual(app["versions"][0]["downloadURL"],
                          source.RELEASE_BASE + "/altstore-ios-100/MCDevManager-1.2.9-10.ipa")
         self.assertEqual(manifest["filename"], "MCDevManager-1.2.9-10.ipa")
+
+    def test_history_template_and_ipa_publisher_share_fork_identity(self):
+        template_path = Path(source.__file__).resolve().parents[2] / "altstore" / "source.template.json"
+        template = json.loads(template_path.read_text(encoding="utf-8"))
+        feed, _ = self.make()
+        for value in (template, feed):
+            self.assertEqual(value["website"], "https://github.com/cluom/MCDevManager")
+            self.assertEqual(value["apps"][0]["iconURL"],
+                             "https://raw.githubusercontent.com/cluom/MCDevManager/altstore-source/icon.png")
+            self.assertEqual(value["apps"][0]["developerName"], "BitterLemonn / cluom")
 
     def test_preserves_history_and_sorts_new_build_first(self):
         metadata = self.metadata()
