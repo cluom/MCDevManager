@@ -18,7 +18,8 @@
           "minOSVersion": "18.2",
           "size": 35842096,
           "marketingVersion": "1.2.9.1",
-          "date": "2026-10-27T15:44:17Z"
+          "date": "2026-10-27T15:44:17Z",
+          "localizedDescription": "• iOS 更新提示新增「用 AltStore 更新」和「用 SideStore 更新」按钮，可选择原安装商店继续更新。\n• 更新前先确认本软件源已有对应新版；尚未发布时会提示等待，避免误装旧版。\n• 增加更新准备进度和失败提示，准备期间防止重复点击。\n• 支持显示四段定制版本号，仍可收到上游后续版本的更新提醒。"
         },
         {
           "downloadURL": "https://github.com/cluom/MCDevManager/releases/download/altstore-ios-40298009421/MCDevManager-1.2.9-10.ipa",
@@ -27,7 +28,8 @@
           "minOSVersion": "18.2",
           "size": 35809380,
           "marketingVersion": "1.2.9",
-          "date": "2026-10-27T14:37:46Z"
+          "date": "2026-10-27T14:37:46Z",
+          "localizedDescription": "• 基于上游 1.2.9，保留收益小组件与明细翻页。\n• 新增按评论条件抽奖和赠送 CSV 导出，支持导入赠送报告补抽失败名额。\n• 全部赠送报告确认后，可按自定义文案回复源评论。\n• 抽奖条件使用模组选择和日期选择控件，日期显示支持中文。"
         },
         {
           "downloadURL": "https://github.com/cluom/MCDevManager/releases/download/altstore-ios-37314981699/MCDevManager-1.2.7-9.ipa",
@@ -36,7 +38,8 @@
           "minOSVersion": "18.2",
           "size": 35516591,
           "marketingVersion": "1.2.7",
-          "date": "2026-10-27T14:35:04Z"
+          "date": "2026-10-27T14:35:04Z",
+          "localizedDescription": "首次收录至本软件源，包含今日/昨日收益及明细翻页的 iOS 小组件。本次复用已有 1.2.7 安装包，未因加入软件源而修改应用内容。"
         }
       ],
       "appPermissions": {
