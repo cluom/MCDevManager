@@ -44,6 +44,14 @@ python3 -B -m unittest discover -s iosApp/scripts -p 'test_*.py'
 
 每次使用新标签，例如 `ios-build-1.2.9-widget-lottery-20261026-<短提交号>`。普通分支推送不触发打包，也不触发 Android / Windows / macOS 构建。下载 ZIP 继续带 `run_id` 和 `run_attempt`，避免与旧文件重名。2026-10-27 起，Release 构建成功后会调用 [AltStore / SideStore 发布流程](altstore-source.md)；当前 fork 须先在网页准备指向原构建源码的公开 Release，未准备时发布任务停止，但已有构建产物保留。Debug 构建不发布。
 
+## iOS 1.2.9.1 构建记录（2026-10-27，待完成）
+
+- 新增定制修订号显示及 AltStore / SideStore 两个独立更新入口；仍检查上游发布版本。
+- 最初的 [Build #11](https://github.com/cluom/MCDevManager/actions/runs/40531274870) 在产出 IPA 前取消，以便同一版本加入 SideStore 按钮；对应 Release 已标记取消，没有更新软件源。
+- 有效构建为 [Build #12](https://github.com/cluom/MCDevManager/actions/runs/40533711370)，源码 `d4e4025bed8604382640f6566a06a9dc20fe4b16`，标签 `ios-build-1.2.9.1-sidestore-20261027-d4e4025b`。版本仍为 `1.2.9.1`，不发布 `1.2.9.2`。
+- [发布入口](https://github.com/cluom/MCDevManager/releases/tag/altstore-ios-40533711370) 已准备，发布标签指向同一源码；构建成功后由现有流程上传并更新源。预期元数据为基础版本 `1.2.9`、构建号 `12`、显示版本 `1.2.9.1`，必须等实际 IPA 校验后才确认。
+- 本地 215 项 JVM 测试通过，小组件工程静态检查通过；尚未完成本次 iOS 原生编译、公开 IPA 校验或真机安装与跳转验收。
+
 ## iOS 1.2.9 定制包（2026-10-26）
 
 - 拉取 `origin` / `upstream` 后确认稳定上游仍为 `41b4b0f`（1.2.9），已包含在当前分支；本次没有新的上游应用代码需要合并。
