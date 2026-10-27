@@ -1,4 +1,4 @@
-name: Test AltStore Source
+name: Test AltStore / SideStore Source
 
 on:
   pull_request:
@@ -6,21 +6,28 @@ on:
       - 'altstore/**'
       - 'iosApp/scripts/*altstore*'
       - '.github/workflows/altstore-source-test.yml'
+      - '.github/workflows/altstore-source.yml'
+      - '.github/workflows/release.yml'
   push:
     paths:
       - 'altstore/**'
       - 'iosApp/scripts/*altstore*'
       - '.github/workflows/altstore-source-test.yml'
+      - '.github/workflows/altstore-source.yml'
+      - '.github/workflows/release.yml'
 
 permissions:
   contents: read
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -B -m unittest discover -s iosApp/scripts -p 'test_generate_altstore_source.py' -v
+      - run: python -B -m unittest discover -s iosApp/scripts -p 'test_*altstore*.py' -v

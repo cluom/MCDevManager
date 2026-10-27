@@ -1,6 +1,9 @@
 from copy import deepcopy
 from pathlib import Path
 import plistlib
+import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -108,6 +111,27 @@ class AltStoreSourceTests(unittest.TestCase):
         self.metadata["buildVersion"] = "11"
         self.assertIn("previous.permission", self.generate(previous=previous)["apps"][0][
             "appPermissions"]["entitlements"])
+
+    @unittest.skipUnless(sys.platform == "darwin", "Requires real macOS codesign")
+    def test_real_codesign_unsigned_and_adhoc_permissions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bundle = root / "Test.app"
+            bundle.mkdir()
+            info = {"CFBundleIdentifier": "com.example.source.test", "CFBundleExecutable": "Test",
+                    "CFBundlePackageType": "APPL", "CFBundleVersion": "1",
+                    "CFBundleShortVersionString": "1.0", "MinimumOSVersion": "15.0"}
+            (bundle / "Info.plist").write_bytes(plistlib.dumps(info))
+            executable = bundle / "Test"
+            shutil.copy2("/usr/bin/true", executable)
+            subprocess.run(["codesign", "--remove-signature", str(executable)], check=True)
+            self.assertEqual(tool.signed_permissions(bundle), {})
+            permissions = root / "permissions.plist"
+            permissions.write_bytes(plistlib.dumps({"com.apple.security.application-groups": ["group.test"]}))
+            subprocess.run(["codesign", "--force", "--sign", "-", "--entitlements", str(permissions),
+                            str(bundle)], check=True)
+            self.assertEqual(tool.signed_permissions(bundle)["com.apple.security.application-groups"],
+                             ["group.test"])
 
 
 if __name__ == "__main__":
