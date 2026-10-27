@@ -1,0 +1,197 @@
+name: Publish AltStore Source
+run-name: AltStore publish · ${{ inputs.run_id || github.ref_name }}
+
+# 复用已完成构建，专用标签可用 Git SSH 触发，不需要本地保存 API 令牌。
+on:
+  push:
+    tags:
+      - 'altstore-publish-*'
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: '已成功的 iOS Build 运行 ID（不是构建号）'
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      run_id:
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: mcdevmanager-altstore-source
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'cluom/MCDevManager'
+    runs-on: macos-latest
+    timeout-minutes: 15
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Test source generator
+        run: python3 -B -m unittest discover -s iosApp/scripts -p 'test_*.py'
+
+      - name: Validate build and read current source
+        id: build
+        uses: actions/github-script@v7
+        env:
+          REQUESTED_RUN: ${{ inputs.run_id }}
+        with:
+          script: |
+            const fs = require('fs');
+            const repo = context.repo;
+            const tagMatch = (process.env.GITHUB_REF_NAME || '').match(/^altstore-publish-(\d+)(?:-[A-Za-z0-9._-]+)?$/);
+            const runId = process.env.REQUESTED_RUN || tagMatch?.[1];
+            if (!/^[1-9]\d*$/.test(runId || '')) throw new Error('Invalid build run ID');
+            const {data: run} = await github.rest.actions.getWorkflowRun({...repo, run_id: Number(runId)});
+            if (run.repository.full_name !== 'cluom/MCDevManager' || run.path !== '.github/workflows/ios.yml') {
+              throw new Error('Only this repository\'s independent iOS workflow is allowed');
+            }
+            // 同一工作流 needs:ios 已成功时可直接发布，否则必须等原工作流整体成功。
+            if (run.conclusion !== 'success' && runId !== String(context.runId)) {
+              throw new Error('The selected build did not complete successfully');
+            }
+            const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts,
+              {...repo, run_id: Number(runId), per_page: 100});
+            const ipa = artifacts.filter(a => a.name.startsWith('ios-ipa-') && !a.expired);
+            if (ipa.length !== 1) throw new Error('Expected exactly one available IPA artifact');
+            fs.mkdirSync('build/altstore', {recursive: true});
+            let previous = '';
+            let sourceHead = '';
+            try {
+              const {data: ref} = await github.rest.git.getRef({...repo, ref: 'heads/altstore-source'});
+              sourceHead = ref.object.sha;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            if (sourceHead) {
+              const {data: file} = await github.rest.repos.getContent({...repo, path: 'source.json', ref: sourceHead});
+              if (file.type !== 'file' || file.encoding !== 'base64') throw new Error('Invalid existing source');
+              fs.writeFileSync('build/altstore/previous.json', Buffer.from(file.content, 'base64'));
+              previous = 'build/altstore/previous.json';
+            }
+            core.setOutput('run_id', runId);
+            core.setOutput('artifact', ipa[0].name);
+            core.setOutput('sha', run.head_sha);
+            core.setOutput('date', run.created_at);
+            core.setOutput('source_head', sourceHead);
+            core.setOutput('previous', previous);
+
+      - name: Download already built IPA
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.build.outputs.artifact }}
+          path: build/altstore/ipa
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.build.outputs.run_id }}
+
+      - name: Inspect app and widget, generate source
+        env:
+          BUILD_RUN_ID: ${{ steps.build.outputs.run_id }}
+          BUILD_DATE: ${{ steps.build.outputs.date }}
+          PREVIOUS: ${{ steps.build.outputs.previous }}
+        run: |
+          ARGS=()
+          if [ -n "$PREVIOUS" ]; then ARGS+=(--previous "$PREVIOUS"); fi
+          python3 iosApp/scripts/altstore_source.py \
+            --ipa-dir build/altstore/ipa --run-id "$BUILD_RUN_ID" \
+            --date "$BUILD_DATE" --output build/altstore/output "${ARGS[@]}"
+
+      - name: Publish immutable IPA, then atomically update source branch
+        uses: actions/github-script@v7
+        env:
+          BUILD_SHA: ${{ steps.build.outputs.sha }}
+          BUILD_RUN_ID: ${{ steps.build.outputs.run_id }}
+          SOURCE_HEAD: ${{ steps.build.outputs.source_head }}
+        with:
+          script: |
+            const fs = require('fs');
+            const crypto = require('crypto');
+            const repo = context.repo;
+            const out = 'build/altstore/output';
+            const manifest = JSON.parse(fs.readFileSync(`${out}/manifest.json`, 'utf8'));
+            const sourceBytes = fs.readFileSync(`${out}/source.json`);
+            const source = JSON.parse(sourceBytes);
+            const bytes = fs.readFileSync(manifest.ipaPath);
+            const digest = crypto.createHash('sha256').update(bytes).digest('hex');
+            if (digest !== manifest.sha256 || bytes.length !== manifest.size) throw new Error('IPA changed after inspection');
+            let release;
+            try {
+              ({data: release} = await github.rest.repos.getReleaseByTag({...repo, tag: manifest.tag}));
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              ({data: release} = await github.rest.repos.createRelease({...repo,
+                tag_name: manifest.tag, target_commitish: process.env.BUILD_SHA,
+                name: `MCDevManager iOS ${manifest.version} (${manifest.buildVersion}) · 雨花定制版`,
+                body: `基于上游的雨花工作室定制版，包含收益小组件与现有定制功能。\n\n` +
+                  `本包需要自行签名；使用原 Apple ID 覆盖安装，并保留收益小组件扩展。\n\n` +
+                  `AltStore 源：${manifest.sourceURL}\n\n` +
+                  `构建：https://github.com/cluom/MCDevManager/actions/runs/${process.env.BUILD_RUN_ID}\n\n` +
+                  `源码：${process.env.BUILD_SHA}\n\nSHA-256：\`${manifest.sha256}\``,
+                draft: false, prerelease: false, make_latest: 'false'}));
+            }
+            if (release.draft) throw new Error('Refusing to overwrite a draft release');
+            async function immutableUpload(name, data, contentType) {
+              const existing = release.assets.find(a => a.name === name);
+              if (existing) {
+                const response = await fetch(existing.browser_download_url);
+                if (!response.ok) throw new Error(`Unable to verify existing ${name}`);
+                const existingBytes = Buffer.from(await response.arrayBuffer());
+                if (!existingBytes.equals(data)) throw new Error(`Published asset differs: ${name}`);
+                return existing;
+              }
+              const {data: asset} = await github.rest.repos.uploadReleaseAsset({...repo,
+                release_id: release.id, name, data,
+                headers: {'content-type': contentType, 'content-length': data.length}});
+              return asset;
+            }
+            const asset = await immutableUpload(manifest.filename, bytes, 'application/octet-stream');
+            await immutableUpload('SHA256SUMS', fs.readFileSync(`${out}/SHA256SUMS`), 'text/plain');
+            // 先匿名下载验证公开 IPA，成功后才让软件源指向它。
+            const response = await fetch(asset.browser_download_url);
+            if (!response.ok) throw new Error(`Public IPA HTTP ${response.status}`);
+            const downloaded = Buffer.from(await response.arrayBuffer());
+            if (crypto.createHash('sha256').update(downloaded).digest('hex') !== digest) {
+              throw new Error('Public IPA checksum mismatch');
+            }
+            if (source.apps[0].versions[0].downloadURL !== asset.browser_download_url) {
+              throw new Error('Source URL differs from uploaded IPA');
+            }
+            const icon = fs.readFileSync('iosApp/iosApp/Assets.xcassets/AppIcon.appiconset/app-icon-1024.png');
+            const tree = [];
+            for (const [path, data] of [['source.json', sourceBytes], ['icon.png', icon]]) {
+              const {data: blob} = await github.rest.git.createBlob({...repo,
+                content: data.toString('base64'), encoding: 'base64'});
+              tree.push({path, mode: '100644', type: 'blob', sha: blob.sha});
+            }
+            const {data: newTree} = await github.rest.git.createTree({...repo, tree});
+            const parents = process.env.SOURCE_HEAD ? [process.env.SOURCE_HEAD] : [];
+            const {data: commit} = await github.rest.git.createCommit({...repo,
+              message: `📦 更新 AltStore 源至 ${manifest.version}（${manifest.buildVersion}）`,
+              tree: newTree.sha, parents});
+            if (parents.length) {
+              await github.rest.git.updateRef({...repo, ref: 'heads/altstore-source', sha: commit.sha, force: false});
+            } else {
+              await github.rest.git.createRef({...repo, ref: 'refs/heads/altstore-source', sha: commit.sha});
+            }
+            const {data: published} = await github.rest.repos.getContent({...repo, path: 'source.json', ref: commit.sha});
+            if (!Buffer.from(published.content, 'base64').equals(sourceBytes)) throw new Error('Published source mismatch');
+            await core.summary.addHeading('AltStore source published')
+              .addLink('Add this source URL in AltStore', manifest.sourceURL).addRaw('\n\n')
+              .addLink('Download IPA', asset.browser_download_url).addRaw('\n\n')
+              .addRaw(`Version: ${manifest.version} (${manifest.buildVersion})\n\nSHA-256: ${digest}\n\n`)
+              .addRaw('Public download and metadata checked. iPhone installation still requires a device test.').write();
