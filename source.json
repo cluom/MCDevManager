@@ -1,30 +1,25 @@
 {
   "name": "MCDevManager",
-  "identifier": "cn.cluom.mcdevmanager.altstore",
-  "sourceURL": "https://raw.githubusercontent.com/cluom/MCDevManager/altstore-source/source.json",
-  "subtitle": "MCDevManager iOS 定制版与收益小组件",
+  "subtitle": "网易 MC 开发者管理器",
   "website": "https://github.com/cluom/MCDevManager",
-  "iconURL": "https://raw.githubusercontent.com/cluom/MCDevManager/altstore-source/icon.png",
-  "tintColor": "9D85C4",
   "apps": [
     {
       "name": "MCDevManager",
       "bundleIdentifier": "com.lemon.mcdevmanagermp.MCDevManagerMPR",
       "developerName": "BitterLemonn / cluom",
-      "localizedDescription": "网易我的世界开发者内容管理器，基于 BitterLemonn/MCDevManager 的扩展版本。支持收益与数据追踪、条件抽奖、赠送报告补抽和评论回复；包含今日/昨日收益及明细翻页的 iOS 小组件。使用自己的开发者账号登录；更新时使用原安装商店与原 Apple ID 覆盖安装，并保留收益小组件扩展。本源提供未正式签名的 IPA，需要通过 AltStore / SideStore 自行签名，不提供账号或证书。",
+      "localizedDescription": "一站式网易 MC 开发者平台管理工具，支持作品管理、数据分析、收益与互动。此版本需要通过 AltStore Classic / SideStore 自行签名。",
       "iconURL": "https://raw.githubusercontent.com/cluom/MCDevManager/altstore-source/icon.png",
-      "tintColor": "9D85C4",
       "category": "developer",
       "versions": [
         {
+          "downloadURL": "https://github.com/cluom/MCDevManager/releases/download/altstore-ios-42817393756/MCDevManager-1.2.9.2-13.ipa",
           "version": "1.2.9",
           "buildVersion": "13",
           "minOSVersion": "18.2",
           "size": 35842411,
-          "date": "2026-11-10T12:37:51Z",
-          "downloadURL": "https://github.com/cluom/MCDevManager/releases/download/altstore-ios-42817393756/MCDevManager-1.2.9.2-13.ipa",
-          "localizedDescription": "• 修复官方出账后，因逐模组流水与官方总账不一致导致人员分账归零的问题。\n• 已出账月份以官方税后净收益为总池，按模组估算收益占比和人员权重分账；无归属份额仍保留为未分配。\n• 对账提示显示逐模组流水、官方总流水，以及多出或少了多少钻石和折合人民币。差额仅用于对账，不会重复扣减分账。\n• 保留现有 iOS 收益小组件和 AltStore/SideStore 更新入口。",
-          "marketingVersion": "1.2.9.2"
+          "marketingVersion": "1.2.9.2",
+          "date": "2026-11-10T12:41:07Z",
+          "localizedDescription": "• 修复官方出账后，因逐模组流水与官方总账不一致导致人员分账归零的问题。\n• 已出账月份以官方税后净收益为总池，按模组估算收益占比和人员权重分账；无归属份额仍保留为未分配。\n• 对账提示显示逐模组流水、官方总流水，以及多出或少了多少钻石和折合人民币。差额仅用于对账，不会重复扣减分账。\n• 保留现有 iOS 收益小组件和 AltStore/SideStore 更新入口。"
         },
         {
           "downloadURL": "https://github.com/cluom/MCDevManager/releases/download/altstore-ios-40533711370/MCDevManager-1.2.9.1-12.ipa",
