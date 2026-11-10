@@ -36,6 +36,8 @@ fun ProfitData.summaryRows(): List<Pair<String, String>> = buildList {
 
 fun ProfitData.allocationNotice(): String? = when {
     settlement == null -> null
-    !allocationFlowMatches -> "逐模组流水与官方总账未对齐，暂不自动分账，全部净收益保留为未分配。"
+    toModuleIncomeDetails().sumOf { it.totalIncome } <= 0.0 ->
+        "缺少可用的模组收益占比，暂不自动分账，全部净收益保留为未分配。"
+    !allocationFlowMatches -> "逐模组流水与官方总账存在差异，已按模组估算收益占比及人员权重分配官方税后净收益；分账为估算。"
     else -> "分账总额采用官方净收益；各模组占比仍为估算，并非官方逐模组结算。"
 }

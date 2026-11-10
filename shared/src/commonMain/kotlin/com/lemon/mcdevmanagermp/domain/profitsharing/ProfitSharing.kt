@@ -62,14 +62,13 @@ fun calculateProfitAllocation(
         )
     }
 
-    if (!profitData.allocationFlowMatches) return ProfitAllocationSummary(
+    val moduleDetails = profitData.toModuleIncomeDetails()
+    val moduleBaseTotal = moduleDetails.sumOf { it.totalIncome }
+    if (moduleBaseTotal <= 0.0) return ProfitAllocationSummary(
         payouts = people.map { PersonPayout(it.id, it.name, 0.0) },
         unassignedAmount = netTotal,
         netTotal = netTotal
     )
-
-    val moduleDetails = profitData.toModuleIncomeDetails()
-    val moduleBaseTotal = moduleDetails.sumOf { it.totalIncome }
     val netFactor = netTotal / profitData.totalProfit
     val peopleById = people.associateBy { it.id }
     val ownershipsByItem = ownerships.groupBy { it.itemId }
@@ -81,7 +80,7 @@ fun calculateProfitAllocation(
         } else {
             0.0
         }
-        // 已出账月份的分账池严格使用官方税后总额；逐模组金额仅作为权重。
+        // 已出账月份按模组估算收益占比分配官方税后总额，流水差异不阻断分账。
         val moduleNetIncome = if (profitData.settlement != null) {
             if (moduleBaseTotal > 0) module.totalIncome / moduleBaseTotal * netTotal else 0.0
         } else {

@@ -9,6 +9,7 @@ import com.lemon.mcdevmanagermp.domain.profitsharing.ProfitPerson
 import com.lemon.mcdevmanagermp.domain.profitsharing.calculateProfitAllocation
 import com.lemon.mcdevmanagermp.utils.calculateProfit
 import com.lemon.mcdevmanagermp.utils.calculationLabel
+import com.lemon.mcdevmanagermp.utils.allocationNotice
 import com.lemon.mcdevmanagermp.utils.getDeveloperProfit
 import com.lemon.mcdevmanagermp.utils.toModuleIncomeDetails
 import kotlinx.serialization.json.Json
@@ -140,13 +141,56 @@ class SettlementProfitTest {
         assertEquals(0.0, result.unassignedAmount, 1e-7)
     }
 
-    @Test fun incomplete_module_flows_keep_official_pool_unassigned() {
+    @Test fun mismatched_module_flows_still_allocate_official_pool() {
         val profit = calculateMonthlyProfit(2026, 8, mapOf("a" to 2_000_000.0), emptyMap(), listOf(august))
         val result = calculateProfitAllocation(profit, listOf(ProfitPerson(1, "test", "甲", 1)),
             listOf(ModuleOwnership("a", 1, 1.0)))
         assertFalse(profit.allocationFlowMatches)
-        assertEquals(0.0, result.payouts.single().amount)
-        assertEquals(9222.99, result.unassignedAmount, 1e-9)
+        assertEquals(9222.99, result.payouts.single().amount, 1e-9)
+        assertEquals(0.0, result.unassignedAmount, 1e-9)
+        assertTrue(profit.allocationNotice()!!.contains("差异"))
+        assertTrue(profit.allocationNotice()!!.contains("分账为估算"))
+    }
+
+    @Test fun mismatched_flows_scale_module_income_and_person_weights_to_official_net() {
+        for (largeFlow in listOf(2_000_000.0, 4_000_000.0)) {
+            val profit = calculateMonthlyProfit(2026, 8,
+                mapOf("a" to largeFlow, "b" to 400_000.0), emptyMap(), listOf(august))
+            assertFalse(profit.allocationFlowMatches)
+            val people = listOf(ProfitPerson(1, "test", "甲", 1), ProfitPerson(2, "test", "乙", 2))
+            val result = calculateProfitAllocation(profit, people, listOf(
+                ModuleOwnership("a", 1, 25.0), ModuleOwnership("a", 2, 75.0),
+                ModuleOwnership("b", 2, 1.0)))
+            val details = profit.toModuleIncomeDetails()
+            val aRatio = details.single { it.moduleId == "a" }.totalIncome / details.sumOf { it.totalIncome }
+            val aPayout = profit.netIncome * aRatio * 0.25
+            assertEquals(aPayout, result.payouts.single { it.personId == 1L }.amount, 1e-7)
+            assertEquals(profit.netIncome - aPayout, result.payouts.single { it.personId == 2L }.amount, 1e-7)
+            assertEquals(9222.99, result.netTotal, 1e-9)
+            assertEquals(result.netTotal, result.payouts.sumOf { it.amount } + result.unassignedAmount, 1e-7)
+        }
+    }
+
+    @Test fun mismatched_flows_preserve_unowned_module_share() {
+        val profit = calculateMonthlyProfit(2026, 8,
+            mapOf("a" to 2_000_000.0, "b" to 400_000.0), emptyMap(), listOf(august))
+        val details = profit.toModuleIncomeDetails()
+        val bRatio = details.single { it.moduleId == "b" }.totalIncome / details.sumOf { it.totalIncome }
+        val result = calculateProfitAllocation(profit, listOf(ProfitPerson(1, "test", "甲", 1)),
+            listOf(ModuleOwnership("a", 1, 1.0)))
+        assertEquals(profit.netIncome * bRatio, result.unassignedAmount, 1e-7)
+        assertEquals(profit.netIncome, result.payouts.sumOf { it.amount } + result.unassignedAmount, 1e-7)
+    }
+
+    @Test fun missing_allocation_basis_keeps_official_pool_unassigned() {
+        val base = calculateMonthlyProfit(2026, 8, mapOf("a" to 2_000_000.0), emptyMap(), listOf(august))
+        for (profit in listOf(base.copy(moduleDiamonds = emptyMap()), base.copy(ecosystemFeeRatio = null))) {
+            val result = calculateProfitAllocation(profit, listOf(ProfitPerson(1, "test", "甲", 1)),
+                listOf(ModuleOwnership("a", 1, 1.0)))
+            assertEquals(0.0, result.payouts.single().amount)
+            assertEquals(9222.99, result.unassignedAmount, 1e-9)
+            assertTrue(profit.allocationNotice()!!.contains("缺少可用"))
+        }
     }
 
     @Test fun fees_and_currency_come_from_bill_not_fixed_conversion_or_estimated_tax() {
