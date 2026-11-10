@@ -34,10 +34,21 @@ fun ProfitData.summaryRows(): List<Pair<String, String>> = buildList {
     }
 }
 
-fun ProfitData.allocationNotice(): String? = when {
-    settlement == null -> null
-    toModuleIncomeDetails().sumOf { it.totalIncome } <= 0.0 ->
-        "缺少可用的模组收益占比，暂不自动分账，全部净收益保留为未分配。"
-    !allocationFlowMatches -> "逐模组流水与官方总账存在差异，已按模组估算收益占比及人员权重分配官方税后净收益；分账为估算。"
-    else -> "分账总额采用官方净收益；各模组占比仍为估算，并非官方逐模组结算。"
+fun ProfitData.allocationNotice(): String? {
+    if (settlement == null) return null
+    val notice = when {
+        toModuleIncomeDetails().sumOf { it.totalIncome } <= 0.0 ->
+            "缺少可用的模组收益占比，暂不自动分账，全部净收益保留为未分配。"
+        !allocationFlowMatches -> "逐模组流水与官方总账存在差异，已按模组估算收益占比及人员权重分配官方税后净收益；分账为估算。"
+        else -> "分账总额采用官方净收益；各模组占比仍为估算，并非官方逐模组结算。"
+    }
+    if (allocationFlowMatches) return notice
+    val moduleFlow = moduleDiamonds.values.sum()
+    val difference = moduleFlow - sumProfit
+    val direction = if (difference > 0) "多" else "少"
+    return "逐模组流水合计：${moduleFlow.formatDecimal(2)} 钻石\n" +
+        "官方总流水（含调整）：${sumProfit.formatDecimal(2)} 钻石\n" +
+        "流水差额：逐模组合计比官方$direction ${abs(difference).formatDecimal(2)} 钻石" +
+        "（折合流水约 ${(abs(difference) * exchangeRate).formatDecimal(2)} 元，非税后收益差额）\n" +
+        notice
 }

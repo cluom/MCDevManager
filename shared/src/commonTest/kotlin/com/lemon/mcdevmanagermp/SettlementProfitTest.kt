@@ -193,6 +193,40 @@ class SettlementProfitTest {
         }
     }
 
+    @Test fun allocation_notice_shows_flow_totals_and_shortfall() {
+        val profit = calculateMonthlyProfit(2026, 8, mapOf("a" to 900.0), emptyMap(), listOf(august))
+            .copy(sumProfit = 1000.0)
+        val notice = profit.allocationNotice()!!
+        assertTrue(notice.contains("逐模组流水合计：900.00 钻石"))
+        assertTrue(notice.contains("官方总流水（含调整）：1000.00 钻石"))
+        assertTrue(notice.contains("比官方少 100.00 钻石"))
+        assertTrue(notice.contains("约 1.00 元，非税后收益差额"))
+    }
+
+    @Test fun allocation_notice_shows_excess_with_official_exchange_rate() {
+        val bill = august.copy(exchangeRate = "0.02")
+        val profit = calculateMonthlyProfit(2026, 8, mapOf("a" to 1100.0), emptyMap(), listOf(bill))
+            .copy(sumProfit = 1000.0)
+        val notice = profit.allocationNotice()!!
+        assertTrue(notice.contains("比官方多 100.00 钻石"))
+        assertTrue(notice.contains("约 2.00 元"))
+    }
+
+    @Test fun matching_and_unpublished_flows_do_not_show_a_false_difference() {
+        val matched = calculateMonthlyProfit(2026, 8, mapOf("a" to 2_859_639.0), emptyMap(), listOf(august))
+        assertFalse(matched.allocationNotice()!!.contains("流水差额"))
+        assertFalse(matched.copy(sumProfit = matched.sumProfit + 0.01).allocationNotice()!!.contains("流水差额"))
+        assertNull(matched.copy(settlement = null).allocationNotice())
+    }
+
+    @Test fun missing_module_data_still_shows_gap_without_claiming_allocation() {
+        val profit = calculateMonthlyProfit(2026, 8, emptyMap(), emptyMap(), listOf(august))
+        val notice = profit.allocationNotice()!!
+        assertTrue(notice.contains("比官方少 2859639.00 钻石"))
+        assertTrue(notice.contains("暂不自动分账"))
+        assertFalse(notice.contains("已按模组"))
+    }
+
     @Test fun fees_and_currency_come_from_bill_not_fixed_conversion_or_estimated_tax() {
         val official = august.copy(exchangeRate = "0.02", tax = "100.00", techServiceFee = 20.0, totalUsagePrice = 5.0)
         val profit = calculateMonthlyProfit(2026, 8, emptyMap(), emptyMap(), listOf(official))
