@@ -237,7 +237,7 @@ fun ProfitData.computeActualModuleSummary(
     val actualRate = reverseEcoFeeRate(reverseInput) ?: return null
     if (actualRate !in 0.0..1.0) return null
 
-    val estimatedById = toModuleIncomeDetails(ECO_FEE_RATE).associateBy { it.moduleId }
+    val estimatedById = toModuleIncomeDetails().associateBy { it.moduleId }
     val actualModules = toModuleIncomeDetails(actualRate)
     if (actualModules.isEmpty()) return null
 

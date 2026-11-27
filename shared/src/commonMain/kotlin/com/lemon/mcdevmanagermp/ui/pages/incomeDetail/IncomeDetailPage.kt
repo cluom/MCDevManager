@@ -70,7 +70,7 @@ fun IncomeDetailPage(initialMonthOffset: Int = 0, onBack: () -> Unit) {
     }
 
     val estimatedModules = remember(state.profitData) {
-        state.profitData.toModuleIncomeDetails(ECO_FEE_RATE)
+        state.profitData.toModuleIncomeDetails()
     }
     val actualSummary = remember(
         state.selectedMonth,
@@ -89,7 +89,7 @@ fun IncomeDetailPage(initialMonthOffset: Int = 0, onBack: () -> Unit) {
         )
     }
     val sortedModules = remember(state.profitData, actualSummary) {
-        val rate = actualSummary?.actualEcoFeeRate ?: ECO_FEE_RATE
+        val rate = actualSummary?.actualEcoFeeRate ?: state.profitData.ecosystemFeeRatio ?: ECO_FEE_RATE
         state.profitData.toModuleIncomeDetails(rate)
     }
     val ratedMonthKeys = remember(state.ecoFeeHistory) {

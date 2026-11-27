@@ -18,6 +18,7 @@ import com.lemon.mcdevmanagermp.data.vo.netease.user.UserInfoVO
 import com.lemon.mcdevmanagermp.domain.main.MainUseCase
 import com.lemon.mcdevmanagermp.domain.main.ProfitMonth
 import com.lemon.mcdevmanagermp.domain.main.isMonthClosed
+import com.lemon.mcdevmanagermp.domain.main.estimateWithPreviousPeriod
 import com.lemon.mcdevmanagermp.domain.resource.GetResourceListUseCase
 import com.lemon.mcdevmanagermp.utils.Logger
 import com.lemon.mcdevmanagermp.utils.ProfitData
@@ -65,6 +66,9 @@ internal class IncomeDetailViewModel(
         getResourceListUseCase = GetResourceListUseCase(ResourceRepositoryImpl.INSTANCE)
     )
     private val cache = mutableMapOf<ProfitMonth, ProfitData>()
+
+    private fun estimatedDisplay(month: ProfitMonth, raw: ProfitData): ProfitData =
+        estimateWithPreviousPeriod(month, raw, _state.value.ecoFeeHistory.associate { it.dataMonth to it.ecoFeeRate })
 
     /** pe 平台全量结算列表缓存，切月份时本地匹配，避免重复请求 */
     private var settlementCache: List<IncomeVO>? = null
@@ -167,7 +171,7 @@ internal class IncomeDetailViewModel(
         // 用 copy 而非重建 state，保留与月份无关的 isEnterprise 与排序偏好
         if (cached != null) {
             _state.update {
-                it.copy(selectedMonth = month, profitData = cached, isLoading = false, errorMessage = null)
+                it.copy(selectedMonth = month, profitData = estimatedDisplay(month, cached), isLoading = false, errorMessage = null)
             }
             trySaveEcoFeeRecord()
             return
@@ -189,7 +193,7 @@ internal class IncomeDetailViewModel(
                 val data = snapshot ?: mainUseCase.computeMonthProfit(month.year, month.month)
                 cache[month] = data
                 if (_state.value.selectedMonth == month) {
-                    _state.update { it.copy(profitData = data, isLoading = false) }
+                    _state.update { it.copy(profitData = estimatedDisplay(month, data), isLoading = false) }
                 }
                 // 网络拉取的已截止月份保存快照；快照来源无需重复保存
                 if (snapshot == null && accountKey != null && canReverse && isMonthClosed(month)) {
@@ -216,7 +220,7 @@ internal class IncomeDetailViewModel(
         val accountKey = AppContext.userInfo?.nickname ?: return
         val month = _state.value.selectedMonth
         if (!isEcoFeeReverseSupported(month)) return
-        val profitData = _state.value.profitData
+        val profitData = cache[month] ?: return
         if (!profitData.isFlowComplete) return
         viewModelScope.launch {
             try {
@@ -233,7 +237,12 @@ internal class IncomeDetailViewModel(
         viewModelScope.launch {
             try {
                 val history = ecoFeeRecordRepository.getRated(accountKey)
-                _state.update { it.copy(ecoFeeHistory = history) }
+                _state.update {
+                    val raw = cache[it.selectedMonth]
+                    it.copy(ecoFeeHistory = history, profitData = raw?.let { data ->
+                        estimateWithPreviousPeriod(it.selectedMonth, data, history.associate { record -> record.dataMonth to record.ecoFeeRate })
+                    } ?: it.profitData)
+                }
             } catch (e: Exception) {
                 Logger.e("加载生态费历史失败", e)
             }

@@ -174,6 +174,16 @@ class MainUseCase(
         val lastMonthResult = lastMonthDeferred?.await()
         val nextMonthResult = nextMonthDeferred?.await()
         val (bills, billError) = billsDeferred.await()
+        // 同一轮先补齐上期费率，避免首页先算完、后台同步完成后却仍显示 30%。
+        val previousMonths = listOfNotNull(thisMonth, lastMonthResult?.first, nextMonthResult?.first)
+            .map { it.shift(-1) }.toSet()
+        if (accountKey.isNotBlank()) {
+            syncEcoFeeRecords(accountKey, bills.filter {
+                it.platform == "pe" && parseMonthKey(it.dataMonth) in previousMonths
+            }, today)
+        }
+        val rates = if (accountKey.isBlank()) emptyMap() else
+            ecoFeeRecordRepository.getRated(accountKey).associate { it.dataMonth to it.ecoFeeRate }
         suspend fun profit(target: ProfitMonth, data: MonthDiamondData): ProfitData {
             val estimate = calculateProfit(data.moduleDiamonds, data.moduleNames, ECO_FEE_RATE)
                 .copy(emeraldModDiamonds = data.emeraldModDiamonds, isFlowComplete = data.isComplete)
@@ -181,7 +191,7 @@ class MainUseCase(
                 ecoFeeRecordRepository.getSnapshot(accountKey, target)
                     ?: estimate.also { ecoFeeRecordRepository.saveSnapshot(accountKey, target, it) }
             } else estimate
-            return applyUpstreamSettlement(target, snapshot, bills)
+            return applyUpstreamSettlement(target, estimateWithPreviousPeriod(target, snapshot, rates), bills)
         }
         val thisMonthProfit = profit(thisMonth, thisMonthData)
         val lastMonthProfit = lastMonthResult?.let { (target, data) -> profit(target, data) }

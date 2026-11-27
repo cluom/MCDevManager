@@ -93,6 +93,7 @@ import com.lemon.mcdevmanagermp.ui.theme.LocalAppColors
 import com.lemon.mcdevmanagermp.utils.ActualModuleIncomeItem
 import com.lemon.mcdevmanagermp.utils.ActualModuleIncomeSummary
 import com.lemon.mcdevmanagermp.utils.ECO_FEE_RATE
+import com.lemon.mcdevmanagermp.utils.calculationLabel
 import com.lemon.mcdevmanagermp.utils.ModuleIncomeDetail
 import com.lemon.mcdevmanagermp.utils.ProfitData
 import com.lemon.mcdevmanagermp.utils.extension.formatDecimal
@@ -331,6 +332,11 @@ internal fun ProfitHeroSummaryCard(
         colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerHigh)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = profitData.calculationLabel(),
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)
+            )
             // 顶部主视觉区：纯色 primaryContainer + onPrimaryContainer
             Column(
                 modifier = Modifier
@@ -564,6 +570,7 @@ internal fun EcoFeeReverseCard(
 ) {
     val colors = LocalAppColors.current
     val isSupportedMonth = isEcoFeeReverseSupported(selectedMonth)
+    val referenceRate = profitData.ecosystemFeeRatio ?: ECO_FEE_RATE
     val ecoFeeRate = remember(selectedMonth, profitData, settlement, dataReady) {
         if (!isSupportedMonth || !dataReady || !profitData.isFlowComplete || settlement == null) null
         else profitData.reverseEcoFeeRate(settlement.reverseInputIncome)
@@ -658,7 +665,7 @@ internal fun EcoFeeReverseCard(
                 )
 
                 else -> {
-                    val deltaPercent = (ecoFeeRate - ECO_FEE_RATE) * 100.0
+                    val deltaPercent = (ecoFeeRate - referenceRate) * 100.0
                     val isLowerOrEqual = deltaPercent <= 0.0
                     val deltaText = "${if (deltaPercent > 0) "+" else ""}${deltaPercent.formatDecimal(2)}%"
                     val actualFeeAmount = profitData.sumProfit / 100.0 * ecoFeeRate
@@ -711,7 +718,7 @@ internal fun EcoFeeReverseCard(
                         FinanceMetricTile(
                             label = "实际生态费",
                             value = actualFeeAmount.formatCurrency(),
-                            subLabel = "预估基准 ${(ECO_FEE_RATE * 100).formatDecimal(0)}%",
+                            subLabel = "预估基准 ${(referenceRate * 100).formatDecimal(4)}%",
                             modifier = Modifier.weight(1f).fillMaxHeight()
                         )
                     }
@@ -719,7 +726,7 @@ internal fun EcoFeeReverseCard(
                     // 刻度对比可视化条
                     EcoFeeRateGauge(
                         actualRate = ecoFeeRate,
-                        referenceRate = ECO_FEE_RATE
+                        referenceRate = referenceRate
                     )
 
                     // 账目对照表
@@ -750,7 +757,7 @@ internal fun EcoFeeReverseCard(
                         )
                         FinanceKeyValueRow(
                             label = "预估生态费率",
-                            value = "${(ECO_FEE_RATE * 100).formatDecimal(2)}%",
+                            value = "${(referenceRate * 100).formatDecimal(4)}%",
                             valueColor = colors.onSurfaceVariant
                         )
                     }
