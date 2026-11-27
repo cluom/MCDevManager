@@ -4,11 +4,17 @@ import com.lemon.mcdevmanagermp.data.common.NetworkState
 import com.lemon.mcdevmanagermp.data.consts.CookiesExpiredException
 import com.lemon.mcdevmanagermp.data.consts.LoginException
 import com.lemon.mcdevmanagermp.data.vo.netease.analyze.ResAnalyzeData
+import com.lemon.mcdevmanagermp.data.vo.netease.income.IncomeVO
 import com.lemon.mcdevmanagermp.data.vo.netease.user.LevelInfoVO
 import com.lemon.mcdevmanagermp.data.vo.netease.user.OverviewVO
 import com.lemon.mcdevmanagermp.data.vo.netease.user.UserInfoVO
-import com.lemon.mcdevmanagermp.data.vo.netease.income.IncomeVO
 import com.lemon.mcdevmanagermp.domain.income.IncomeRepository
+import com.lemon.mcdevmanagermp.data.consts.enums.PriceTypeEnum
+import com.lemon.mcdevmanagermp.data.repository.EcoFeeRecordRepository
+import com.lemon.mcdevmanagermp.data.repository.isEcoFeeReverseSupported
+import com.lemon.mcdevmanagermp.data.repository.parseMonthKey
+import com.lemon.mcdevmanagermp.utils.calculateProfit
+import com.lemon.mcdevmanagermp.utils.ECO_FEE_RATE
 import com.lemon.mcdevmanagermp.domain.analyze.AnalyzeRepository
 import com.lemon.mcdevmanagermp.domain.profitsharing.ProfitAllocationSummary
 import com.lemon.mcdevmanagermp.domain.profitsharing.ProfitSharingRepository
@@ -18,6 +24,7 @@ import com.lemon.mcdevmanagermp.domain.user.UserRepository
 import com.lemon.mcdevmanagermp.utils.ProfitData
 import com.lemon.mcdevmanagermp.utils.Logger
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
@@ -86,6 +93,10 @@ internal data class ProfitMonthWindow(
     val showNextMonth: Boolean
 )
 
+/** 计算周期是否已截止：该月已完整结束（当前自然月之前的月份） */
+internal fun isMonthClosed(month: ProfitMonth, today: LocalDate): Boolean =
+    month < ProfitMonth(today.year, today.month.number)
+
 internal fun profitMonthWindow(today: LocalDate): ProfitMonthWindow {
     val current = ProfitMonth(today.year, today.month.number)
     val nextMonth = current.shift(1)
@@ -100,23 +111,27 @@ internal fun profitMonthWindow(today: LocalDate): ProfitMonthWindow {
 private data class MonthDiamondData(
     val moduleDiamonds: Map<String, Double>,
     val moduleNames: Map<String, String>,
-    val dataThroughDate: LocalDate?
+    val dataThroughDate: LocalDate?,
+    val emeraldModDiamonds: Map<String, Double> = emptyMap(),
+    val isComplete: Boolean = true
 )
 
 private data class ComponentDiamondData(
     val itemId: String,
     val moduleName: String,
     val diamonds: Double,
-    val dataThroughDate: LocalDate?
+    val dataThroughDate: LocalDate?,
+    val isComplete: Boolean = true
 )
 
 class MainUseCase(
     private val userRepository: UserRepository,
     private val analyzeRepository: AnalyzeRepository,
     private val getResourceListUseCase: GetResourceListUseCase,
-    private val incomeRepository: IncomeRepository,
+    private val incomeRepository: IncomeRepository? = null,
     private val profitSharingRepository: ProfitSharingRepository? = null
 ) {
+    private val ecoFeeRecordRepository get() = EcoFeeRecordRepository.INSTANCE
     suspend fun loadDashboard(): MainDashboardData = coroutineScope {
         val userInfoDeferred = async { userRepository.getUserInfo() }
         val overviewDeferred = async { userRepository.getOverview() }
@@ -159,9 +174,15 @@ class MainUseCase(
         val lastMonthResult = lastMonthDeferred?.await()
         val nextMonthResult = nextMonthDeferred?.await()
         val (bills, billError) = billsDeferred.await()
-        fun profit(target: ProfitMonth, data: MonthDiamondData) = calculateMonthlyProfit(
-            target.year, target.month, data.moduleDiamonds, data.moduleNames, bills, billError
-        )
+        suspend fun profit(target: ProfitMonth, data: MonthDiamondData): ProfitData {
+            val estimate = calculateProfit(data.moduleDiamonds, data.moduleNames, ECO_FEE_RATE)
+                .copy(emeraldModDiamonds = data.emeraldModDiamonds, isFlowComplete = data.isComplete)
+            val snapshot = if (accountKey.isNotBlank() && isMonthClosed(target, today)) {
+                ecoFeeRecordRepository.getSnapshot(accountKey, target)
+                    ?: estimate.also { ecoFeeRecordRepository.saveSnapshot(accountKey, target, it) }
+            } else estimate
+            return applyUpstreamSettlement(target, snapshot, bills)
+        }
         val thisMonthProfit = profit(thisMonth, thisMonthData)
         val lastMonthProfit = lastMonthResult?.let { (target, data) -> profit(target, data) }
         val nextMonthProfit = nextMonthResult?.let { (target, data) -> profit(target, data) }
@@ -180,14 +201,23 @@ class MainUseCase(
     }
 
     suspend fun computeMonthProfit(year: Int, month: Int): ProfitData = coroutineScope {
+        if (incomeRepository == null) return@coroutineScope computeEstimatedMonthProfit(year, month)
         val billsDeferred = async { loadSettlementBills() }
         val data = getOneMonthComponentDiamonds(year, month)
         val (bills, billError) = billsDeferred.await()
-        calculateMonthlyProfit(year, month, data.moduleDiamonds, data.moduleNames, bills, billError)
+        val estimate = calculateProfit(data.moduleDiamonds, data.moduleNames, ECO_FEE_RATE)
+            .copy(emeraldModDiamonds = data.emeraldModDiamonds, isFlowComplete = data.isComplete)
+        applyUpstreamSettlement(ProfitMonth(year, month), estimate, bills)
+    }
+
+    suspend fun computeEstimatedMonthProfit(year: Int, month: Int): ProfitData {
+        val data = getOneMonthComponentDiamonds(year, month)
+        return calculateProfit(data.moduleDiamonds, data.moduleNames, ECO_FEE_RATE)
+            .copy(emeraldModDiamonds = data.emeraldModDiamonds, isFlowComplete = data.isComplete)
     }
 
     private suspend fun loadSettlementBills(): Pair<List<IncomeVO>, String?> =
-        when (val result = incomeRepository.getIncome("all")) {
+        when (val result = requireNotNull(incomeRepository).getIncome("all")) {
             is NetworkState.Success -> result.data?.incomes.orEmpty() to null
             is NetworkState.Error -> {
                 Logger.e("收益速算的官方账单加载失败", result.e)
@@ -214,11 +244,13 @@ class MainUseCase(
                 getResourceListUseCase("pe", onlineOnly = true, excludePrerequisites = true)
             }
             val lobbyResources = async { analyzeRepository.getLobbyIncomeResources() }
-            val resList = when (val resources = normalResources.await()) {
+            val resourceResult = normalResources.await()
+            val lobbyResult = lobbyResources.await()
+            val resList = when (val resources = resourceResult) {
                 is NetworkState.Success -> resources.data ?: emptyList()
                 is NetworkState.Error -> emptyList()
             }
-            val lobbyResList = when (val resources = lobbyResources.await()) {
+            val lobbyResList = when (val resources = lobbyResult) {
                 is NetworkState.Success -> resources.data?.items.orEmpty()
                 is NetworkState.Error -> emptyList()
             }
@@ -244,7 +276,7 @@ class MainUseCase(
                             dataThroughDate = dayData.mapNotNull { parseDateParamOrNull(it.dateId) }.maxOrNull()
                         )
                     } else {
-                        ComponentDiamondData(res.itemId, res.itemName, 0.0, null)
+                        ComponentDiamondData(res.itemId, res.itemName, 0.0, null, false)
                     }
                 }
             }.map { it.await() }
@@ -252,13 +284,14 @@ class MainUseCase(
             val lobbyData = lobbyResList.map { res ->
                 async {
                     // 查询使用商品 ID，分账仍归属于作品 ID，不按可能重名的作品名分组。
-                    val goodsIds = when (val goods = analyzeRepository.getLobbyGoodsList(res.itemId)) {
+                    val goodsResult = analyzeRepository.getLobbyGoodsList(res.itemId)
+                    val goodsIds = when (val goods = goodsResult) {
                         is NetworkState.Success -> goods.data?.goods.orEmpty()
                             .map { it.goodsId }.filter(String::isNotBlank).distinct()
                         is NetworkState.Error -> emptyList()
                     }
                     if (goodsIds.isEmpty()) {
-                        return@async ComponentDiamondData(res.itemId, res.itemName, 0.0, null)
+                        return@async ComponentDiamondData(res.itemId, res.itemName, 0.0, null, goodsResult is NetworkState.Success)
                     }
                     val result = analyzeRepository.getDayDetail(
                         platform = "pe",
@@ -278,12 +311,16 @@ class MainUseCase(
                             dataThroughDate = dayData.mapNotNull { parseDateParamOrNull(it.dateId) }.maxOrNull()
                         )
                     } else {
-                        ComponentDiamondData(res.itemId, res.itemName, 0.0, null)
+                        ComponentDiamondData(res.itemId, res.itemName, 0.0, null, false)
                     }
                 }
             }.map { it.await() }
 
-            val componentData = (normalData + lobbyData)
+            val resById = resList.associateBy { it.itemId }
+            val (diamondGoods, emeraldGoods) = lobbyData.partition {
+                resById[it.itemId]?.getPriceType() == PriceTypeEnum.DIAMOND
+            }
+            val componentData = (normalData + diamondGoods)
                 .groupBy { it.itemId }
                 .map { (itemId, items) ->
                     ComponentDiamondData(
@@ -298,9 +335,41 @@ class MainUseCase(
             MonthDiamondData(
                 moduleDiamonds = componentData.associate { it.itemId to it.diamonds },
                 moduleNames = componentData.associate { it.itemId to it.moduleName },
-                dataThroughDate = componentData.mapNotNull { it.dataThroughDate }.maxOrNull()
+                dataThroughDate = componentData.mapNotNull { it.dataThroughDate }.maxOrNull(),
+                emeraldModDiamonds = emeraldGoods.associate { it.itemId to it.diamonds },
+                isComplete = resourceResult is NetworkState.Success && lobbyResult is NetworkState.Success &&
+                    (normalData + diamondGoods).all { it.isComplete }
             )
         }
+
+    internal suspend fun syncEcoFeeRecords(
+        accountKey: String,
+        settlements: List<IncomeVO>,
+        today: LocalDate
+    ): List<ProfitMonth> {
+        if (accountKey.isBlank()) return emptyList()
+        val pending = settlements.mapNotNull { settlement ->
+            val month = parseMonthKey(settlement.dataMonth) ?: return@mapNotNull null
+            if (!isEcoFeeReverseSupported(month)) return@mapNotNull null
+            if (ecoFeeRecordRepository.isRated(accountKey, month)) null else month to settlement
+        }
+        if (pending.isEmpty()) return emptyList()
+
+        // 逐月串行：同一账号写同一张表，且每月的流水请求本身已是并发发起的
+        return pending.mapNotNull { (month, settlement) ->
+            val cached = ecoFeeRecordRepository.getSnapshot(accountKey, month)
+            val profitData = cached ?: computeEstimatedMonthProfit(month.year, month.month)
+            // 已截止月份实时计算后补存快照，后续无需重复请求
+            if (cached == null && isMonthClosed(month, today)) {
+                ecoFeeRecordRepository.saveSnapshot(accountKey, month, profitData)
+            }
+            if (ecoFeeRecordRepository.saveReverseResult(accountKey, month, profitData, settlement)) {
+                month
+            } else {
+                null
+            }
+        }
+    }
 
     fun isSessionExpired(vararg states: NetworkState<*>): Boolean {
         return states.any { state ->
@@ -335,10 +404,10 @@ internal fun createProfitPeriod(
 
 internal fun mergeProfitDiamonds(
     normal: Map<String, Double>,
-    lobby: Map<String, Double>
+    goods: Map<String, Double>
 ): Map<String, Double> = buildMap {
     putAll(normal)
-    lobby.forEach { (name, diamonds) -> put(name, (get(name) ?: 0.0) + diamonds) }
+    goods.forEach { (name, diamonds) -> put(name, (get(name) ?: 0.0) + diamonds) }
 }
 
 private fun formatDateParam(date: LocalDate): String = date.toString().replace("-", "")
@@ -360,6 +429,6 @@ internal fun aggregateGoodsDiamondsByOwner(
     goodsToOwner: Map<String, String>
 ): Map<String, Double> =
     rows.mapNotNull { row ->
-        goodsToOwner[row.iid]?.let { it to row.diamond.toDouble() }
+        goodsToOwner[row.iid]?.let { it to row.diamond * (1 - row.refundRate) }
     }.groupBy({ it.first }, { it.second })
         .mapValues { (_, values) -> values.sum() }

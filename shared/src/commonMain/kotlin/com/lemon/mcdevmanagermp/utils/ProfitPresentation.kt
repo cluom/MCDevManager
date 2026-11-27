@@ -7,8 +7,9 @@ fun ProfitData.calculationLabel(): String {
     val fee = ecosystemFeeRatio?.let { (it * 100).formatDecimal(4) + "%" }
     return when {
         settlement != null -> "${settlement.month} 官方总账" +
-            (fee?.let { " · $feeSourceMonth 生态费 $it" } ?: "")
-        fee != null -> "参考 $feeSourceMonth 实际生态费 $fee · 本期预估"
+            (fee?.let { " · 反推生态费 $it" } ?: "")
+        fee != null && feeSourceMonth != null -> "参考 $feeSourceMonth 反推生态费 $fee · 本期预估"
+        fee != null -> "默认生态费 $fee · 本期预估"
         else -> unavailableReason ?: "等待官方账单数据"
     }
 }

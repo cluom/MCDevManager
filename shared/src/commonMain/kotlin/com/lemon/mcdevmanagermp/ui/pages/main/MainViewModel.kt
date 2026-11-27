@@ -18,6 +18,8 @@ import com.lemon.mcdevmanagermp.data.vo.netease.user.LevelInfoVO
 import com.lemon.mcdevmanagermp.data.vo.netease.user.OverviewVO
 import com.lemon.mcdevmanagermp.data.vo.netease.user.UserInfoVO
 import com.lemon.mcdevmanagermp.domain.main.MainUseCase
+import com.lemon.mcdevmanagermp.data.repository.EcoFeeRecordRepository
+import com.lemon.mcdevmanagermp.domain.main.ProfitMonth
 import com.lemon.mcdevmanagermp.domain.main.ProfitPeriod
 import com.lemon.mcdevmanagermp.domain.main.profitMonthWindow
 import com.lemon.mcdevmanagermp.domain.profitsharing.ProfitAllocationSummary
@@ -126,6 +128,7 @@ class MainViewModel : BaseViewModel<MainState, MainAction, MainEffect>(MainState
         incomeRepository = IncomeRepositoryImpl.INSTANCE,
         profitSharingRepository = profitSharingRepository
     )
+    private val incomeRepository = IncomeRepositoryImpl.INSTANCE
     private val rankListUseCase = RankListUseCase(
         rankListRepository = RankListRepositoryImpl.INSTANCE
     )
@@ -279,6 +282,7 @@ class MainViewModel : BaseViewModel<MainState, MainAction, MainEffect>(MainState
                 if (sessionExpired) {
                     sendEffect(MainEffect.SessionExpired)
                 } else {
+                    syncEcoFeeRecords()
                     // 兼容旧版本：将当前账号的 email 字段更新为 nickname
                     if (userInfo != null) {
                         val currentAccount = accountRepository.getLastUsedAccount()
@@ -355,6 +359,42 @@ class MainViewModel : BaseViewModel<MainState, MainAction, MainEffect>(MainState
                 }
             } catch (_: Exception) {
                 setState { copy(isProfitLoading = false) }
+            }
+        }
+    }
+
+    private fun syncEcoFeeRecords() {
+        val accountKey = AppContext.userInfo?.nickname ?: return
+        viewModelScope.launch {
+            try {
+                val settlements = when (val result = incomeRepository.getIncome("pe")) {
+                    is NetworkState.Success -> result.data?.incomes.orEmpty()
+                    is NetworkState.Error -> {
+                        Logger.e("获取结算数据失败: ${result.msg}", result.e)
+                        return@launch
+                    }
+                }
+                val timeZone = TimeZone.of("Asia/Shanghai")
+                val today = Clock.System.now().toLocalDateTime(timeZone).date
+                mainUseCase.syncEcoFeeRecords(accountKey, settlements, today)
+            } catch (e: Exception) {
+                Logger.e("自动反推生态费失败", e)
+            }
+        }
+    }
+
+    /**
+     * 计算周期截止后登录即保存上月预估快照，供结算单出账后反推生态费；
+     * 上月流水不完整或无流水时跳过，待下次登录重试。失败不影响首页加载。
+     */
+    private fun saveLastMonthSnapshot(month: ProfitMonth, lastMonth: ProfitData?) {
+        val last = lastMonth ?: return
+        val accountKey = AppContext.userInfo?.nickname ?: return
+        viewModelScope.launch {
+            try {
+                EcoFeeRecordRepository.INSTANCE.saveSnapshot(accountKey, month, last)
+            } catch (e: Exception) {
+                Logger.e("保存上月生态费快照失败", e)
             }
         }
     }

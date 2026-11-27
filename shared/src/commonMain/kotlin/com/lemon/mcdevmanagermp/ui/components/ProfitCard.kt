@@ -64,6 +64,10 @@ import mcdevmanagermpr.shared.generated.resources.Res
 import mcdevmanagermpr.shared.generated.resources.ic_money
 import org.jetbrains.compose.resources.painterResource
 
+/**
+ * 首页收益速算卡片。
+ * @param showTaxEstimate 是否展示按个人劳务报酬预估的"含扣税"金额；企业开发者自行开票缴税，传 false 隐藏
+ */
 @Composable
 fun ProfitCard(
     title: String,
@@ -71,6 +75,7 @@ fun ProfitCard(
     profitPeriod: ProfitPeriod? = null,
     allocationSummary: ProfitAllocationSummary? = null,
     isLoading: Boolean = true,
+    showTaxEstimate: Boolean = true,
     expanded: Boolean = false,
     onToggleExpand: () -> Unit = {},
     onNavigateToDetail: (() -> Unit)? = null,
@@ -163,7 +168,7 @@ fun ProfitCard(
                             fontWeight = FontWeight.Bold,
                             color = colors.primary
                         )
-                        Text(
+                        if (showTaxEstimate || profitData.settlement != null) Text(
                             text = if (profitData.hasIncome) "税后净收益 ${profitData.netIncome.formatDecimal(2)}" else "等待账单",
                             style = MaterialTheme.typography.bodySmall,
                             color = colors.onSurfaceVariant
