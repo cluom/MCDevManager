@@ -31,10 +31,32 @@ env:
   BUILD_CONFIGURATION: ${{ inputs.configuration || 'Release' }}
 
 jobs:
+  prepare-release:
+    if: github.repository == 'cluom/MCDevManager' && (inputs.configuration || 'Release') == 'Release'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prepare release before spending time on compilation
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const {ensureRelease} = require('./iosApp/scripts/altstore_publish_guard.cjs');
+            const release = await ensureRelease({github, repo: context.repo,
+              runId: String(context.runId), sha: context.sha});
+            await core.summary.addHeading('Release preparation passed')
+              .addLink('Release (IPA pending)', release.html_url).write();
+
   # ============================================================
   # iOS — 未签名 IPA（用户自行通过 Sideloadly/AltStore 签名）
   # ============================================================
   ios:
+    needs: prepare-release
+    if: ${{ !cancelled() && (needs.prepare-release.result == 'success' || needs.prepare-release.result == 'skipped') }}
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4

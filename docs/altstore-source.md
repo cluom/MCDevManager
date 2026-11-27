@@ -26,7 +26,9 @@ https://raw.githubusercontent.com/cluom/MCDevManager/altstore-source/source.json
 
 ## 自动发布与复用旧构建
 
-`.github/workflows/ios.yml` 的 **Release** 构建成功后调用 `altstore-publish.yml`；Debug 构建只提供测试产物，不进入源。当前 fork 默认分支与定制源码分支不同，GitHub 创建这些 Release 需要工作流文件写入权限，而普通 `GITHUB_TOKEN` 没有该权限。因此先用仓库所有者账号在网页创建公开 Release：标签 `altstore-ios-<run_id>` 必须指向该次原始构建的 `head_sha`。发布任务不修改账号权限、不替换默认分支、不伪造源码提交；Release 尚未准备好就停止，构建产物仍可下载。其他平台及原多平台 Release 工作流不受影响。
+`.github/workflows/ios.yml` 的 **Release** 构建先执行 `prepare-release`，再编译，最后调用 `altstore-publish.yml`；Debug 构建只提供测试产物，不进入源。准备步骤先复用现有 Release，否则用普通 `GITHUB_TOKEN` 尝试创建，并校验标签准确指向原始源码；不会改变 latest 标记。
+
+当前 fork 默认分支与定制源码分支不同，GitHub 可能要求普通 `GITHUB_TOKEN` 不具备的工作流文件写入权限。此时**在编译前停止**，错误信息会给出预填标签及源码 SHA 的创建链接：使用仓库所有者账号创建公开 Release 后，选择 **Re-run failed jobs** 继续。不要更改默认分支或扩大令牌权限来绕过限制，也不要移动已存在的错误标签。准备阶段的 Release 尚无 IPA，不能视为已发布可安装版本；只有公开下载、真实元数据和软件源均验证成功才算发布完成。
 
 首次发布或对已有产物补发时，推送指向当前发布工具代码的标签：
 
@@ -35,7 +37,9 @@ git tag altstore-publish-<成功的iOS运行ID>-<唯一后缀>
 git push origin altstore-publish-<成功的iOS运行ID>-<唯一后缀>
 ```
 
-这只启动下载、校验、发布，不重新编译。也支持手动运行 Publish AltStore Source，并填写 `run_id`。只允许当前仓库 `.github/workflows/ios.yml` 的成功构建；缺失、过期、多个 IPA 或 Debug 包都会停止发布。
+这只启动下载、校验、发布，不重新编译。也支持手动运行 Publish AltStore Source，并填写 `run_id`。以该运行最新的 `ios` 编译任务成功且源码 SHA 一致为准，**允许整体红叉但仅发布步骤失败的运行补发**；缺失、过期、多个 IPA 或 Debug 包仍停止发布。重跑旧运行会使用旧工作流，不能取得后来提交的修复；修复后补发旧 IPA 应从新工具提交推送上述 `altstore-publish-*` 标签。
+
+2026-11-27：运行 `45979899320` 的 IPA 编译与上传成功，发布因缺少 `altstore-ios-45979899320` Release 失败。本次修复将准备检查前移，并移除“发布失败导致禁止补发”的循环依赖；没有更改应用版本、构建号或重打 IPA。发布防护的回归测试：`node --test iosApp/scripts/test_altstore_publish_guard.cjs`。
 
 首次两版本验证按旧到新发布：`37314981699`（原始代码 `e7bfcc0ce49d85364296e1721e3a1a06e72adaac`，1.2.7 / 9），然后 `40298009421`（原始代码 `b2c91f63a6330e09ecf03413ce7beee703197270`，1.2.9 / 10）。每次仍以真实包内信息校验为准。没有 1.2.8 定制包，不重编、不改名冒充。源码版本与发布工具版本分别记录，不能把新工具提交冒充应用二进制源码。
 

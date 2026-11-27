@@ -8,6 +8,8 @@ on:
       - '.github/workflows/altstore-source-test.yml'
       - '.github/workflows/altstore-source.yml'
       - '.github/workflows/release.yml'
+      - '.github/workflows/ios.yml'
+      - '.github/workflows/altstore-publish.yml'
   push:
     paths:
       - 'altstore/**'
@@ -15,6 +17,8 @@ on:
       - '.github/workflows/altstore-source-test.yml'
       - '.github/workflows/altstore-source.yml'
       - '.github/workflows/release.yml'
+      - '.github/workflows/ios.yml'
+      - '.github/workflows/altstore-publish.yml'
 
 permissions:
   contents: read
@@ -30,6 +34,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Test publication preflight and retry guards
+        run: node --test iosApp/scripts/test_altstore_publish_guard.cjs
       - name: Run tests and expose failure details in check annotations
         shell: bash
         run: |

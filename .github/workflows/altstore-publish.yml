@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       run_id:
-        description: '已成功的 iOS Build 运行 ID（不是构建号）'
+        description: 'iOS 编译已成功的运行 ID（允许仅发布失败；不是构建号）'
         required: true
         type: string
   workflow_call:
@@ -46,6 +46,9 @@ jobs:
       - name: Test source generator
         run: python3 -B -m unittest discover -s iosApp/scripts -p 'test_*.py'
 
+      - name: Test publication guards
+        run: node --test iosApp/scripts/test_altstore_publish_guard.cjs
+
       - name: Validate build and read current source
         id: build
         uses: actions/github-script@v7
@@ -54,31 +57,21 @@ jobs:
         with:
           script: |
             const fs = require('fs');
+            const {ensureRelease, validateBuild} = require('./iosApp/scripts/altstore_publish_guard.cjs');
             const repo = context.repo;
             const tagMatch = (process.env.GITHUB_REF_NAME || '').match(/^altstore-publish-(\d+)(?:-[A-Za-z0-9._-]+)?$/);
             const runId = process.env.REQUESTED_RUN || tagMatch?.[1];
             if (!/^[1-9]\d*$/.test(runId || '')) throw new Error('Invalid build run ID');
             const {data: run} = await github.rest.actions.getWorkflowRun({...repo, run_id: Number(runId)});
-            if (run.repository.full_name !== 'cluom/MCDevManager' || run.path !== '.github/workflows/ios.yml') {
-              throw new Error('Only this repository\'s independent iOS workflow is allowed');
-            }
-            // 同一工作流 needs:ios 已成功时可直接发布，否则必须等原工作流整体成功。
-            if (run.conclusion !== 'success' && runId !== String(context.runId)) {
-              throw new Error('The selected build did not complete successfully');
-            }
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun,
+              {...repo, run_id: Number(runId), filter: 'latest', per_page: 100});
+            validateBuild(run, jobs);
+            core.info(`Verified successful iOS compilation: run=${runId}, source=${run.head_sha}, overall=${run.conclusion}`);
             const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts,
               {...repo, run_id: Number(runId), per_page: 100});
             const ipa = artifacts.filter(a => (a.name === 'ios-ipa' || a.name.startsWith('ios-ipa-')) && !a.expired);
             if (ipa.length !== 1) throw new Error('Expected exactly one available IPA artifact');
-            // Fork default branch differs from the app source branch. GitHub requires a
-            // user with workflow-write authority to create these Releases; do not bypass it.
-            try {
-              const {data: release} = await github.rest.repos.getReleaseByTag({...repo, tag: `altstore-ios-${runId}`});
-              if (release.draft) throw new Error('Publish the prepared Release before uploading IPA');
-            } catch (error) {
-              if (error.status === 404) throw new Error(`Prepare a public Release for tag altstore-ios-${runId} using your GitHub account first. No IPA was downloaded or published.`);
-              throw error;
-            }
+            await ensureRelease({github, repo, runId, sha: run.head_sha});
             fs.mkdirSync('build/altstore', {recursive: true});
             let previous = '';
             let sourceHead = '';
